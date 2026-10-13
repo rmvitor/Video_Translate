@@ -10,8 +10,12 @@ try{
  let ready=false;for(let retry=0;retry<60;retry++){try{await execute('docker',['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres']);ready=true;break;}catch{await new Promise(resolve=>setTimeout(resolve,500));}}
  if(!ready)throw new Error('PostgreSQL did not become ready');
  await sql(`create role anon; create role authenticated; create role service_role bypassrls; create schema auth; create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz,raw_user_meta_data jsonb default '{}'::jsonb); create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$; grant usage on schema auth,public to authenticated,anon,service_role;`);
- for(const name of (await readdir('supabase/migrations')).filter(name=>name.endsWith('.sql')).sort())await sql(await readFile('supabase/migrations/'+name,'utf8'));
+ const migrations=(await readdir('supabase/migrations')).filter(name=>name.endsWith('.sql')).sort();
+ await sql(await readFile('supabase/migrations/'+migrations[0],'utf8'));
  await sql(await readFile('tests/access-db.sql','utf8'));
+ // Upgrade a working installation with an existing master, users, sessions and audit records.
+ await sql(`update auth.users set raw_user_meta_data=raw_user_meta_data||'{"contact":"Contato anterior"}'::jsonb where id='00000000-0000-4000-8000-000000000002';`);
+ for(const name of migrations.slice(1))await sql(await readFile('supabase/migrations/'+name,'utf8'));
  await sql(await readFile('tests/commercial-access-db.sql','utf8'));
  console.log('Real PostgreSQL checks passed: master bootstrap, approval, block/reapproval, revocation, expiry, session time, audit, RLS and denied privilege escalation.');
 }finally{if(created)await execute('docker',['rm','--force',container]);}

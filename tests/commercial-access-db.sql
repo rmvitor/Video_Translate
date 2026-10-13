@@ -3,6 +3,10 @@ insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values
  ('00000000-0000-4000-8000-000000000004','customer@example.test',now(),'{"display_name":"Customer","contact":"+55 11 90000-0000","role":"master"}');
 do $$ begin
  assert (select count(*)=1 from public.access_profiles where role='master');
+ assert (select role='master' and status='active' from public.access_profiles where id='00000000-0000-4000-8000-000000000001'),'Existing master must survive the upgrade';
+ assert (select contact='Contato anterior' from public.access_profiles where id='00000000-0000-4000-8000-000000000002'),'Existing signup metadata must be backfilled';
+ assert (select count(*)>0 from public.access_sessions),'Existing sessions must survive the upgrade';
+ assert (select count(*)>0 from public.access_audit),'Existing audit must survive the upgrade';
  assert (select contact='+55 11 90000-0000' and role='user' and status='pending' from public.access_profiles where id='00000000-0000-4000-8000-000000000004');
  assert public.manage_access('00000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','list','{"status":"pending"}')->>'schema_version'='2';
  assert (public.manage_access('00000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','invite_authorize')->>'ok')::boolean;
