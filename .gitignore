@@ -1,0 +1,14 @@
+node_modules/
+dist/
+public/runtime/
+test-results/
+playwright-report/
+.env
+.env.*
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.wav
+*.mp3
+*.local
