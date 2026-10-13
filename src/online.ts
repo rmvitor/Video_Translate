@@ -59,6 +59,7 @@ export function createOnlineAssistant(options: Options) {
   }
   return {
     get busy() { return busy; },
+    reset: () => { key = ''; controller?.abort(); const review = document.querySelector<HTMLInputElement>('#review-gemini-key'); if (review) review.value = ''; updateStatus(); (document.querySelector('#settings-gemini-key') as HTMLInputElement).value = ''; },
     translate: (items: OnlineText[], apply: (values: { id: string; translated: string }[]) => Promise<void>) => review(items, 'translate', value => apply(value as { id: string; translated: string }[])),
     analyze: (items: OnlineText[], save: (value: string) => Promise<void>) => review(items, 'analyze', value => save(value as string)),
   };

@@ -1,11 +1,12 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
+import type { Page } from '@playwright/test';
 const endpoint = 'https://generativelanguage.googleapis.com/**';
 const dummyKey = 'dummy-test-key-never-real';
 async function seed(page: Page) {
   await page.route('**/seed.html', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Seed</title>' }));
   await page.goto('./seed.html');
   await page.evaluate(async () => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('entrelinhas-local', 2); request.onupgradeneeded = () => { for (const name of ['projects', 'documents', 'collections']) if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name, { keyPath: 'id' }); }; request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('entrelinhas-local:user:00000000-0000-4000-8000-000000000001', 2); request.onupgradeneeded = () => { for (const name of ['projects', 'documents', 'collections']) if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name, { keyPath: 'id' }); }; request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
     const preview = new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="60" height="30"><rect width="60" height="30" fill="purple"/></svg>'], { type: 'image/svg+xml' });
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(['projects', 'documents', 'collections'], 'readwrite');
@@ -18,7 +19,7 @@ async function seed(page: Page) {
   await page.goto('./');
 }
 async function readDB(page: Page, store: string, id: string) {
-  return page.evaluate(async ({ store, id }) => { const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('entrelinhas-local'); r.onsuccess = () => resolve(r.result); }); const result = await new Promise<any>(resolve => { const r = db.transaction(store).objectStore(store).get(id); r.onsuccess = () => resolve(r.result); }); db.close(); return result; }, { store, id });
+  return page.evaluate(async ({ store, id }) => { const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('entrelinhas-local:user:00000000-0000-4000-8000-000000000001'); r.onsuccess = () => resolve(r.result); }); const result = await new Promise<any>(resolve => { const r = db.transaction(store).objectStore(store).get(id); r.onsuccess = () => resolve(r.result); }); db.close(); return result; }, { store, id });
 }
 async function course(page: Page) {
   await page.getByRole('button', { name: 'Projetos e assuntos', exact: true }).click();

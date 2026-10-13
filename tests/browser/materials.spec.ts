@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -48,7 +48,7 @@ test('projects and subjects organize a real PDF, preserving images, revisions an
   await localVoiceFixture(page);
   await context.route('https://huggingface.co/**', route => route.abort());
   const requests: string[] = [];
-  context.on('request', request => { if (request.method() !== 'GET') requests.push(request.url()); });
+  context.on('request', request => { if (request.method() !== 'GET' && !request.url().includes('/functions/v1/') && !request.url().includes('/auth/v1/')) requests.push(request.url()); });
   await page.goto('./');
   await page.getByRole('button', { name: 'Projetos e assuntos', exact: true }).click();
   await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
@@ -96,6 +96,9 @@ test('projects and subjects organize a real PDF, preserving images, revisions an
   await expect(page.locator('.pdf-copy').first()).toHaveText('Boas-vindas ao treinamento!');
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });
   await page.reload(); await context.setOffline(true); await page.reload();
+  await expect(page.locator('#access-screen')).toBeVisible();
+  await expect(page.locator('#app')).not.toBeVisible();
+  await context.setOffline(false); await page.reload();
   await page.getByRole('button', { name: 'Páginas PDF', exact: true }).click();
   await page.getByRole('button', { name: 'Abrir página', exact: true }).click();
   await expect(page.locator('.reading-page')).toHaveCount(2);
@@ -139,6 +142,8 @@ test('database upgrade preserves existing videos and text and accepts new study 
     await new Promise<void>((resolve, reject) => { const tx = db.transaction('projects', 'readwrite'); tx.objectStore('projects').put({ id: 'legacy', title: 'Meu vídeo anterior', filename: 'legacy.mp4', size: 100, lastModified: 0, duration: 6, createdAt: Date.now(), segments: [{ start: 0, end: 3, original: 'Welcome', translated: 'Bem-vindo' }] }); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); }); db.close();
   });
   await page.goto('./');
+  await page.locator('#claim-legacy').click();
+  await expect(page.locator('#claim-legacy')).toHaveCount(0);
   await page.getByRole('button', { name: 'Minha biblioteca' }).click();
   await expect(page.locator('.library-card h2')).toHaveText('Meu vídeo anterior');
   await page.getByRole('button', { name: 'Abrir projeto' }).click();

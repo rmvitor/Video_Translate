@@ -1,6 +1,16 @@
 # Entrelinhas
 
-PWA para compreender vídeos e PDFs em outros idiomas, acompanhar projetos, preservar imagens e narrar em PT-BR. Inclui tradução local e tradução/análise opcional de texto com Gemini. O site é estático e pode ser publicado no GitHub Pages; arquivos e textos são processados no dispositivo.
+PWA para compreender vídeos e PDFs em outros idiomas, acompanhar projetos, preservar imagens e narrar em PT-BR. Inclui tradução local, tradução/análise opcional de texto com Gemini e controle de acesso preparado para Supabase.
+
+**Versão 0.4:** login e painel master precisam de um projeto Supabase configurado. Sem configuração, o novo build exibe a tela de preparação. Consulte [o guia de ativação](docs/SUPABASE_SETUP.md) antes de levar essa versão ao Pages. O site é estático e pode ser publicado no GitHub Pages; arquivos e textos são processados no dispositivo.
+
+## Usuários e backup
+
+O master aprova/bloqueia contas, define prazos e duração de sessão e consulta IP, horários e histórico de acesso. Supabase armazena somente autenticação e dados de autorização/auditoria; bibliotecas de treinamentos permanecem em bancos locais separados por conta.
+
+**Preferências → Backup local e transferência** exporta um arquivo criptografado com senha, incluindo organização, textos, imagens, análises e progresso, além de vídeos guardados quando selecionados. A restauração mescla os dados sem substituir registros existentes. O arquivo e a senha são transferidos localmente; nenhum backup ou conteúdo é enviado ao Supabase.
+
+Siga [SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) para criar o projeto, aplicar a migração, publicar a função e definir sua conta master.
 
 ## Desenvolvimento
 
@@ -12,7 +22,7 @@ ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci
 npm run dev
 ```
 
-No PowerShell, defina `$env:ONNXRUNTIME_NODE_INSTALL_CUDA="skip"` antes de `npm ci`. O uso local não precisa de chave ou backend. O Gemini é opcional e usa uma chave pessoal informada na interface, somente na memória da sessão.
+No PowerShell, defina `$env:ONNXRUNTIME_NODE_INSTALL_CUDA="skip"` antes de `npm ci`. Os modelos locais não precisam de chave de IA. O acesso à ferramenta exige Supabase configurado, aprovação e renovação de autorização online. O Gemini é opcional e usa uma chave pessoal informada na interface, somente na memória da sessão.
 
 ```sh
 npm test
@@ -66,7 +76,7 @@ São aceitas somente vozes que o navegador informa como **locais** e com idioma 
 
 ## Privacidade e armazenamento
 
-- O app não tem servidor de upload ou analytics. A chave pessoal do Gemini, se informada, existe somente na memória da sessão. Os vídeos são reproduzidos com URLs `blob:`. Vídeo e áudio não são enviados para serviços de IA.
+- O app não tem servidor de upload de conteúdo ou analytics. Supabase gerencia e-mail, sessões, IP e horários de acesso. A chave pessoal do Gemini, se informada, existe somente na memória da sessão. Os vídeos são reproduzidos com URLs `blob:`. Vídeo e áudio não são enviados para serviços de IA.
 - A interface e os runtimes são servidos pelo Pages. Os modelos de `Xenova/whisper-tiny.en`, `Xenova/whisper-tiny`, `Xenova/opus-mt-en-ROMANCE` e `Xenova/m2m100_418M` são baixados do Hugging Face via HTTPS. Esses downloads são requisições GET sem o conteúdo do vídeo. O provedor de download pode observar os metadados usuais de conexão, como IP e modelo solicitado.
 - As transcrições, traduções, projetos, subassuntos e imagens das páginas PDF são salvos no IndexedDB deste navegador. O vídeo fica apenas na sessão por padrão; a cópia persistente exige ativar a opção na tela. A atualização do banco preserva os vídeos e legendas criados antes da versão 0.2.
 - O app não criptografa a biblioteca. Use um perfil confiável, principalmente para conteúdo interno. Sites no mesmo domínio/origem compartilham os limites de segurança de armazenamento do navegador; tenha cuidado com outros projetos publicados no mesmo domínio do Pages.
@@ -78,7 +88,7 @@ São aceitas somente vozes que o navegador informa como **locais** e com idioma 
 
 Abra por HTTPS (ou localhost durante desenvolvimento). Chrome e Edge oferecem instalação no desktop/Android; no iOS, use Safari → Compartilhar → Adicionar à Tela de Início. A disponibilidade do comando de instalação depende do navegador.
 
-O service worker guarda a interface e os runtimes da versão atual; não intercepta vídeos `blob:` nem uploads. Os modelos completos ficam no cache do Transformers.js. Termine um processamento online e teste sem conexão antes de depender da IA offline. O cache da interface não garante que os modelos tenham terminado de baixar.
+O service worker guarda a interface e os runtimes da versão atual; não intercepta vídeos `blob:` nem uploads. O login e a renovação de acesso exigem internet. A interface é suspensa após perder a autorização, em até 65 segundos, preservando a biblioteca. Os modelos completos ficam no cache do Transformers.js. Os modelos baixados podem executar localmente; isso não dispensa a autorização online nesta versão. O cache da interface não garante que os modelos tenham terminado de baixar.
 
 O primeiro uso baixa centenas de MB. Downloads e processamento exigem espaço e memória; vídeos longos e celulares modestos podem esgotar memória ou ficar lentos. A aba deve permanecer aberta durante o processamento. Cancelar encerra o worker. Em dispositivos que não suportam a execução, importe um projeto com legendas criado em outro dispositivo.
 
@@ -119,14 +129,20 @@ VIDEO_INPUT=/caminho/privado/video.mp4 npm run test:ai
 PDF_INPUT=/caminho/privado/documento.pdf npm run test:pdf
 ```
 
-Esse teste exige acesso aos modelos, espaço e memória. Verifica a extração, transcrição, tradução, tempos válidos e textos distintos nos dois idiomas, sem imprimir o conteúdo privado. Em seguida desativa a conexão e processa o vídeo inteiro novamente com os modelos em cache. No runner de nuvem, usa `curl` para transportar somente os downloads GET pelo proxy HTTPS configurado, mantendo a verificação TLS; a extração e a inferência executam nos workers WebAssembly reais do Chromium. Em um navegador do usuário, o aplicativo baixa os modelos diretamente, sem essa adaptação de testes.
+Esse teste exige acesso aos modelos, espaço e memória. Verifica a extração, transcrição, tradução, tempos válidos e textos distintos nos dois idiomas, sem imprimir o conteúdo privado. Em seguida desativa a conexão e processa o vídeo inteiro novamente com os modelos em cache. Na versão 0.4, esses scripts usam autorização local simulada para isolar o teste dos modelos; isso não demonstra login offline ou o Supabase hospedado. No runner de nuvem, usa `curl` para transportar somente os downloads GET pelo proxy HTTPS configurado, mantendo a verificação TLS; a extração e a inferência executam nos workers WebAssembly reais do Chromium. Em um navegador do usuário, o aplicativo baixa os modelos diretamente, sem essa adaptação de testes.
 
-Na versão 0.3, build, 11 testes unitários e 12 testes funcionais validam organização em lateral, navegação entre vídeo/PDF, retomada, progresso, notas, tema/cor, persistência e privacidade dos pedidos online. A integração Gemini é testada com respostas controladas e uma chave fictícia; nenhuma chamada real com chave pessoal foi feita neste ambiente. A qualidade e disponibilidade do serviço devem ser conferidas usando a chave no aplicativo.
+Os testes de conteúdo introduzidos na versão 0.3 validam organização em lateral, navegação entre vídeo/PDF, retomada, progresso, notas, tema/cor, persistência e privacidade dos pedidos online. A integração Gemini é testada com respostas controladas e uma chave fictícia; nenhuma chamada real com chave pessoal foi feita neste ambiente. A qualidade e disponibilidade do serviço devem ser conferidas usando a chave no aplicativo.
 
 O vídeo de exemplo foi revalidado com FFmpeg, Whisper e Marian reais no Chromium, produzindo cinco trechos traduzidos, seguido de processamento completo offline com os modelos em cache. Uma tradução sintética de espanhol para português também passou com M2M100 real; no runner, os pesos grandes foram transportados por um servidor local de testes para contornar o limite de tamanho do canal DevTools, sem alterar o aplicativo publicado. O PDF de exemplo conserva suas duas páginas, seis imagens extraídas (além da composição preservada nas prévias originais) e 17 blocos de texto. Os testes de voz usam simulação controlada; a reprodução audível depende de uma voz local PT-BR instalada. O layout mobile foi verificado no Chromium, sem teste em hardware mobile.
 
+Na versão 0.4, os testes também verificam autenticação com serviço controlado, políticas de aprovação/bloqueio, prazo de sessão, painel master, recuperação de senha e backup criptografado. As regras SQL/RLS passam em PostgreSQL real. Ainda não há projeto Supabase hospedado configurado: a ativação remota e o envio de e-mails permanecem pendentes.
+
 ## Estrutura
 
+- `src/access.ts` / `src/admin.ts`: login, renovação de acesso e gestão master.
+- `src/auth-storage.mjs`: sessões por aba e verificador PKCE temporário para links de e-mail.
+- `src/backup-format.mjs` / `src/backup.ts`: arquivos locais criptografados e restauração.
+- `supabase/`: migração de permissões/auditoria e função de controle de acesso.
 - `src/main.ts`: interface, player, sincronização e gerenciamento de projetos.
 - `src/processor.worker.ts`: extração, transcrição e tradução locais.
 - `src/storage.ts`: biblioteca IndexedDB e remoção de modelos.

@@ -2,6 +2,10 @@ import './style.css';
 import './learning.css';
 import './theme.css';
 import './course.css';
+import './access.css';
+import { createAccess } from './access';
+import { createAdmin } from './admin';
+import { createBackupArea } from './backup';
 import { initAppearance } from './appearance';
 import { createOnlineAssistant } from './online';
 import { LANGUAGES } from './preferences.mjs';
@@ -9,7 +13,7 @@ import { createIcons, Play, Layers, Languages, ShieldCheck, HardDrive, Download,
 import type { Project, Segment, WorkerEvent, Assignment } from './types';
 import { createLearningArea } from './learning';
 import { LocalNarrator, VideoNarration } from './narration';
-import { listProjects, saveProject, deleteProject, removeLocalData } from './storage';
+import { listProjects, saveProject, deleteProject, removeLocalData, setLocalAccount } from './storage';
 import { activeSegment, formatClock, exportSubtitles, parseSubtitles, validateProject } from './subtitles.mjs';
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
@@ -35,6 +39,9 @@ let storageAvailable = true;
 let toastTimer: ReturnType<typeof setTimeout>;
 let learning: ReturnType<typeof createLearningArea>;
 let pendingOrganization: Assignment | undefined;
+let localEpoch = 0;
+let access: ReturnType<typeof createAccess>;
+let backups: ReturnType<typeof createBackupArea>;
 const narrator = new LocalNarrator();
 
 $('#app').innerHTML = `
@@ -48,12 +55,14 @@ $('#app').innerHTML = `
       <button class="nav-item" data-view="collections">${icon('folder-open')}<span>Projetos e assuntos</span></button>
       <button class="nav-item" data-view="library">${icon('layers')}<span>Minha biblioteca</span><span id="library-count" class="nav-count">0</span></button>
       <button class="nav-item" data-view="settings">${icon('settings-2')}<span>Preferências</span></button>
+      <button class="nav-item" id="admin-nav" data-view="admin" hidden>${icon('settings-2')}<span>Gestão de usuários</span></button>
       <button class="nav-item" data-view="privacy">${icon('shield-check')}<span>Privacidade</span></button>
     </nav>
+    <div class="account-bar"><span id="account-email"></span><button class="text-button" id="signout">Sair da conta</button></div>
     <div class="sidebar-bottom">
       <div class="local-card"><span class="local-icon">${icon('hard-drive')}</span><strong>Seu dispositivo. Seu conteúdo.</strong><p>Os vídeos ficam com você.<br>Tradução local ou de texto online.</p><span class="local-indicator"><span></span> Processamento local</span></div>
       <button class="install-button" id="install">${icon('monitor-smartphone')}<span>Instalar aplicativo</span>${icon('arrow-up-right')}</button>
-      <div class="sidebar-footer">Feito para compreender, sem barreiras.<span>v0.3 · PWA</span></div>
+      <div class="sidebar-footer">Feito para compreender, sem barreiras.<span>v0.4 · PWA</span></div>
     </div>
   </aside>
   <div class="app-content">
@@ -89,7 +98,7 @@ $('#app').innerHTML = `
         <div class="model-note">${icon('download')}No primeiro uso, os modelos de IA são baixados (centenas de MB). Depois, os modelos completos em cache podem funcionar offline. A tradução automática pode precisar de revisão.</div>
       </section>
       <section id="library-view" hidden><div class="page-heading"><div><div class="eyebrow">CONTEÚDO QUE FICA</div><h1>Minha biblioteca<span>.</span></h1><p>Projetos guardados apenas neste navegador e dispositivo.</p></div><button class="button secondary" id="import-project">${icon('upload')}Importar projeto</button></div><div class="library-notice">${icon('hard-drive')}Vídeos só são guardados quando você ativa essa opção. Exporte os projetos como backup: limpar os dados do navegador pode apagar sua biblioteca.</div><div id="library-grid" class="library-grid"></div></section>
-      <section id="privacy-view" hidden><div class="page-heading"><div><div class="eyebrow">VOCÊ TEM O CONTROLE</div><h1>Privado por natureza<span>.</span></h1><p>Uma ferramenta pública. Seus treinamentos continuam privados.</p></div></div><div class="privacy-grid"><article class="info-card">${icon('shield-check')}<h2>O arquivo fica com você</h2><p>Vídeos, PDFs, imagens, transcrições e traduções são processados no navegador. A narração usa somente vozes PT-BR que o navegador identifica como locais. A transcrição e a tradução local funcionam no dispositivo. Se você escolher o Gemini, somente os textos selecionados e autorizados serão enviados para tradução ou análise. Vídeo, áudio, PDF e imagens nunca são enviados. A chave fica apenas na memória da sessão. Não usamos analytics.</p><p>O site e os modelos de IA precisam ser baixados pela internet no primeiro uso. Esses pedidos de download não contêm o conteúdo do seu vídeo.</p></article><article class="info-card">${icon('hard-drive')}<h2>Biblioteca local, sem nuvem</h2><p>Os textos, projetos de estudo e imagens das páginas PDF ficam no IndexedDB deste navegador. Por padrão, o vídeo só fica na memória da sessão. Ative “Guardar vídeo neste dispositivo” para também manter uma cópia local.</p><p>Os dados não são criptografados pelo aplicativo. Outras pessoas com acesso a este perfil do navegador podem abrir a biblioteca. Use um dispositivo e perfil confiáveis.</p></article><article class="info-card">${icon('wifi-off')}<h2>Preparado para ficar offline</h2><p>O aplicativo instalado guarda a interface. Os modelos completos baixados são armazenados em cache. Antes de depender do modo offline, conclua um processamento online e teste novamente sem conexão.</p><p>Celulares com pouca memória podem não conseguir executar os modelos. Você pode importar legendas ou projetos produzidos em outro dispositivo.</p></article><article class="info-card">${icon('settings-2')}<h2>Seus dados, suas escolhas</h2><p>Exporte textos e legendas pela área de tradução e páginas PDF em HTML com imagens incorporadas. Exporte um projeto JSON para manter os dois idiomas e os tempos (o JSON não inclui o vídeo).</p><p id="storage-estimate">Consultando armazenamento…</p><button class="button danger" id="clear-data">${icon('trash-2')}Apagar biblioteca e modelos locais</button></article></div></section>
+      <section id="privacy-view" hidden><div class="page-heading"><div><div class="eyebrow">VOCÊ TEM O CONTROLE</div><h1>Privado por natureza<span>.</span></h1><p>Uma ferramenta pública. Seus treinamentos continuam privados.</p></div></div><div class="privacy-grid"><article class="info-card">${icon('shield-check')}<h2>O arquivo fica com você</h2><p>Vídeos, PDFs, imagens, transcrições e traduções são processados no navegador. A narração usa somente vozes PT-BR que o navegador identifica como locais. A transcrição e a tradução local funcionam no dispositivo. Se você escolher o Gemini, somente os textos selecionados e autorizados serão enviados para tradução ou análise. Vídeo, áudio, PDF e imagens nunca são enviados. A chave fica apenas na memória da sessão. O Supabase recebe somente dados de conta e controle de acesso (e-mail, IP, horários e sessões). Não enviamos conteúdo de treinamento para o Supabase.</p><p>O site e os modelos de IA precisam ser baixados pela internet no primeiro uso. Esses pedidos de download não contêm o conteúdo do seu vídeo.</p></article><article class="info-card">${icon('hard-drive')}<h2>Biblioteca local, sem nuvem</h2><p>Os textos, projetos e imagens das páginas PDF ficam no IndexedDB deste navegador. Por padrão, o vídeo só fica na memória da sessão. Ative “Guardar vídeo neste dispositivo” para também manter uma cópia local.</p><p>Os dados não são criptografados pelo aplicativo. Outras pessoas com acesso a este perfil do navegador podem abrir a biblioteca. Use um dispositivo e perfil confiáveis.</p></article><article class="info-card">${icon('wifi-off')}<h2>Preparado para ficar offline</h2><p>O aplicativo instalado guarda a interface. Os modelos completos baixados são armazenados em cache. Os arquivos e os modelos permanecem locais. Com o controle de usuários ativo, a autorização exige conexão e é renovada periodicamente; sem renovação, o acesso à interface é suspenso em até 65 segundos. A biblioteca não é apagada.</p><p>Celulares com pouca memória podem não conseguir executar os modelos. Você pode importar legendas ou projetos produzidos em outro dispositivo.</p></article><article class="info-card">${icon('settings-2')}<h2>Seus dados, suas escolhas</h2><p>Exporte textos e legendas pela área de tradução e páginas PDF em HTML com imagens incorporadas. Exporte um projeto JSON para manter os dois idiomas e os tempos (o JSON não inclui o vídeo).</p><p id="storage-estimate">Consultando armazenamento…</p><button class="button danger" id="clear-data">${icon('trash-2')}Apagar biblioteca e modelos locais</button></article></div></section>
       <section id="settings-view" hidden><div class="page-heading"><div><div class="eyebrow">DO SEU JEITO</div><h1>Preferências<span>.</span></h1><p>Escolha a aparência e configure a tradução opcional de texto.</p></div></div><div class="settings-grid"><article class="info-card"><h2>Aparência</h2><div id="appearance-fields"></div></article><article class="info-card"><h2>Tradução e análise online</h2><div id="online-fields"></div></article></div></section>
     </main>
     <footer class="main-footer"><span>entrelinhas<span class="brand-dot">.</span></span><span>Mais compreensão. Menos barreiras.</span><button class="text-button" data-view="privacy">Sobre a privacidade ${icon('arrow-up-right')}</button></footer>
@@ -102,18 +111,47 @@ $('#app').innerHTML = `
 `;
 icons();
 initAppearance();
-const online = createOnlineAssistant({ toast, dialog, isBusy: () => processing || Boolean(learning?.busy) });
+const online = createOnlineAssistant({ toast, dialog, isBusy: () => processing || Boolean(learning?.busy) || Boolean(backups?.busy) || !access?.granted });
 const videoNarration = new VideoNarration($<HTMLVideoElement>('#video'), narrator, () => project?.segments ?? [], message => {
   $('#narration-status').textContent = message;
   $<HTMLInputElement>('#video-narration').checked = videoNarration.enabled;
 }, $<HTMLInputElement>('#mute-original'));
 learning = createLearningArea({
-  toast, icons, dialog, changeView, narrator, online, currentView: () => currentView, isBusy: () => processing || online.busy,
+  toast, icons, dialog, changeView, narrator, online, currentView: () => currentView, accountEpoch: () => localEpoch, isBusy: () => processing || online.busy || Boolean(backups?.busy) || !access?.granted,
   stopMedia: () => { videoNarration.disable(); $<HTMLVideoElement>('#video').pause(); },
   openVideo: openProject, refreshVideos: refreshLibrary, currentVideo: () => project,
   addVideo: value => { pendingOrganization = value; attachToProject = false; $<HTMLInputElement>('#video-input').click(); },
   assignVideo: async value => { if (project) { Object.assign(project, value); await persist(); updateProjectUI(); } },
 });
+access = createAccess({
+  toast,
+  lock: async () => {
+    localEpoch++; online.reset(); $('#dialog-content').innerHTML = ''; cancelProcessing(true); narrator.stop(); videoNarration.disable(); $<HTMLVideoElement>('#video').pause();
+    await learning.flush(); await learning.reset();
+    clearVideo(); project = undefined; currentFile = undefined; projects = []; active = -1;
+    pendingOrganization = undefined; attachToProject = false; storageAvailable = true;
+    $('#video').hidden = true; $('#reattach').hidden = true; $('#player-empty').hidden = false;
+    updateProjectUI(); renderTranscript(); admin.reset(); backups.reset();
+  },
+  unlock: async profile => {
+    localEpoch++; setLocalAccount(profile.id); storageAvailable = true;
+    await refreshLibrary(); await learning.refresh();
+    $('#account-email').textContent = profile.email;
+    $('#admin-nav').hidden = profile.role !== 'master';
+    changeView('workspace'); updateProjectUI(); await backups.legacy();
+  },
+});
+const admin = createAdmin({ access, toast, dialog });
+backups = createBackupArea({ isBusy: () => processing || learning.busy || online.busy, allowed: () => access.granted, account: () => access.profile?.id, toast,
+  flush: () => learning.flush(), refresh: async () => { await refreshLibrary(); await learning.refresh(); },
+});
+$('#signout').addEventListener('click', () => void access.signout());
+$('#video').addEventListener('play', () => { if (!access.granted) $<HTMLVideoElement>('#video').pause(); });
+document.addEventListener('access-changed', () => { $('#admin-nav').hidden = access.profile?.role !== 'master'; });
+// The normal UI cannot keep running after session revocation. The public source is not DRM.
+for (const name of ['click','change','submit','drop'] as const) document.addEventListener(name, event => {
+  if (!access.granted && (event.target as Element)?.closest('#app')) { event.preventDefault(); event.stopImmediatePropagation(); }
+}, true);
 $('#video-narration').addEventListener('change', () => {
   try {
     if ($<HTMLInputElement>('#video-narration').checked) videoNarration.enable(); else videoNarration.disable();
@@ -135,16 +173,18 @@ function dialog(content: string) {
 }
 
 function changeView(view: string) {
+  if (view === 'admin' && access.profile?.role !== 'master') return;
   learning?.prepareView(view);
   currentView = view;
-  for (const name of ['workspace', 'library', 'privacy', 'documents', 'collections', 'settings']) $(`#${name}-view`).hidden = name !== view;
+  for (const name of ['workspace', 'library', 'privacy', 'documents', 'collections', 'settings', 'admin']) $(`#${name}-view`).hidden = name !== view;
   if (view !== 'workspace') { videoNarration.disable(); $<HTMLVideoElement>('#video').pause(); }
   if (view !== 'documents') { narrator.stop(); document.querySelectorAll('.is-reading').forEach(el => el.classList.remove('is-reading')); }
   document.querySelectorAll('[data-view]').forEach(el => el.classList.toggle('selected', el.getAttribute('data-view') === view));
-  $('#breadcrumb-label').textContent = ({ workspace: 'Traduzir vídeo', library: 'Minha biblioteca', privacy: 'Privacidade', documents: 'Páginas PDF', collections: 'Projetos e assuntos', settings: 'Preferências' })[view] ?? '';
+  $('#breadcrumb-label').textContent = ({ workspace: 'Traduzir vídeo', library: 'Minha biblioteca', privacy: 'Privacidade', documents: 'Páginas PDF', collections: 'Projetos e assuntos', settings: 'Preferências', admin: 'Gestão de usuários' })[view] ?? '';
   $('#sidebar').classList.remove('menu-open');
   $('#menu-backdrop').hidden = true;
   $('#menu').setAttribute('aria-expanded', 'false');
+  if (view === 'admin') void admin.refresh();
   if (view === 'library') renderLibrary();
   if (view === 'privacy') void storageEstimate();
   if (view === 'documents' || view === 'collections') void learning.refresh();
@@ -152,8 +192,10 @@ function changeView(view: string) {
 
 async function refreshLibrary() {
   if (!storageAvailable) return;
+  const epoch = localEpoch;
   try {
-    projects = (await listProjects()).sort((a, b) => b.createdAt - a.createdAt);
+    const stored = await listProjects(); if (epoch !== localEpoch) return;
+    projects = stored.sort((a, b) => b.createdAt - a.createdAt);
     $('#library-count').textContent = String(projects.length);
     if (currentView === 'library') renderLibrary();
   } catch {
@@ -268,7 +310,8 @@ function cancelProcessing(silent = false) {
 }
 
 async function chooseVideo(file: File) {
-  if (processing || learning.busy || online.busy) { toast('Cancele o processamento atual antes de trocar de vídeo.'); return; }
+  const epoch = localEpoch;
+  if (processing || learning.busy || online.busy || backups.busy) { toast('Cancele o processamento atual antes de trocar de vídeo.'); return; }
   if (file.size > 500 * 1024 * 1024) { toast('Escolha um vídeo de até 500 MB.'); return; }
   if (!file.type.startsWith('video/') && !/\.(mp4|mov|webm|mkv)$/i.test(file.name)) { toast('Escolha um arquivo de vídeo MP4, WebM, MOV ou MKV.'); return; }
   if (attachToProject && project && ((project.filename && file.name !== project.filename) || (project.size && file.size !== project.size))) {
@@ -291,6 +334,7 @@ async function chooseVideo(file: File) {
       video.addEventListener('loadedmetadata', loaded, { once: true });
       video.addEventListener('error', failed, { once: true });
     });
+    if (epoch !== localEpoch || !access.granted) return;
     if (!Number.isFinite(video.duration) || video.duration <= 0) throw new Error('Não foi possível identificar a duração do vídeo.');
     if (video.duration > 1800) throw new Error('Escolha um vídeo de até 30 minutos. Divida treinamentos maiores em partes.');
     currentFile = file;
@@ -313,6 +357,7 @@ async function chooseVideo(file: File) {
     await persist();
     if (returnToCourse && project?.collectionId) await learning.showVideoInProject(project.id);
   } catch (error) {
+    if (epoch !== localEpoch) return;
     project = previous; currentFile = previousFile;
     clearVideo();
     if (previousFile) showVideo(previousFile);
@@ -366,7 +411,7 @@ function startProcessing(transcribeOnly = false) {
 }
 
 async function openProject(id: string) {
-  if (processing || learning.busy || online.busy) { toast('Cancele o processamento antes de abrir outro projeto.'); return; }
+  if (processing || learning.busy || online.busy || backups.busy) { toast('Cancele o processamento antes de abrir outro projeto.'); return; }
   const selected = projects.find(p => p.id === id);
   if (!selected) return;
   project = selected;
@@ -428,7 +473,7 @@ document.addEventListener('click', async event => {
     $<HTMLInputElement>('#video-input').click();
   }
   if (action === 'close-dialog') $<HTMLDialogElement>('#dialog').close();
-  if (action === 'storage-help') dialog(`<div class="dialog-symbol">${icon('hard-drive')}</div><h2>Disponível só para você.</h2><p>Com a opção desativada, o vídeo fica apenas na memória da sessão. Os textos ficam na biblioteca local e você pode selecionar o vídeo novamente depois.</p><p>Com a opção ativada, uma cópia do vídeo fica no armazenamento deste navegador, sem upload. Ela estará disponível aqui, inclusive offline.</p><p>O navegador pode remover dados se faltar espaço. Limpar os dados do site também apaga a biblioteca. Mantenha o arquivo original e exporte um backup dos textos.</p>`);
+  if (action === 'storage-help') dialog(`<div class="dialog-symbol">${icon('hard-drive')}</div><h2>Disponível só para você.</h2><p>Com a opção desativada, o vídeo fica apenas na memória da sessão. Os textos ficam na biblioteca local e você pode selecionar o vídeo novamente depois.</p><p>Com a opção ativada, uma cópia do vídeo fica no armazenamento deste navegador, sem upload. Ela continuará neste dispositivo. O acesso à ferramenta ainda exige autorização online.</p><p>O navegador pode remover dados se faltar espaço. Limpar os dados do site também apaga a biblioteca. Mantenha o arquivo original e crie um backup criptografado em Preferências.</p>`);
   if (target.dataset.open) await openProject(target.dataset.open);
   if (target.dataset.delete) {
     const id = target.dataset.delete;
@@ -576,8 +621,8 @@ $<HTMLInputElement>('#project-input').addEventListener('change', async event => 
 });
 
 $('#clear-data').addEventListener('click', () => {
-  if (processing || learning.busy || online.busy) { toast('Cancele o processamento antes de apagar os dados.'); return; }
-  dialog(`<h2>Apagar os dados locais?</h2><p>Isso remove todos os projetos, vídeos guardados, páginas PDF com suas imagens e modelos de IA deste navegador. O aplicativo continua instalado. Você precisará baixar os modelos novamente.</p><p>Exporte seus projetos antes. Esta ação não pode ser desfeita.</p><button class="button danger" id="confirm-clear">${icon('trash-2')}Apagar dados locais</button>`);
+  if (processing || learning.busy || online.busy || backups.busy) { toast('Cancele o processamento antes de apagar os dados.'); return; }
+  dialog(`<h2>Apagar os dados locais?</h2><p>Isso remove os projetos, vídeos guardados e páginas PDF desta conta neste navegador, além do cache compartilhado dos modelos de IA. Bibliotecas de outras contas e a cópia anterior ao login são preservadas. O aplicativo continua instalado. Você precisará baixar os modelos novamente.</p><p>Exporte seus projetos antes. Esta ação não pode ser desfeita.</p><button class="button danger" id="confirm-clear">${icon('trash-2')}Apagar dados locais</button>`);
   $('#confirm-clear').addEventListener('click', async () => {
     try {
       cancelProcessing(true); await learning.flush(); await removeLocalData();
@@ -587,7 +632,7 @@ $('#clear-data').addEventListener('click', () => {
       $('#error-panel').hidden = true;
       $<HTMLInputElement>('#search').value = '';
       await refreshLibrary(); updateProjectUI(); renderTranscript(); await storageEstimate();
-      $<HTMLDialogElement>('#dialog').close(); toast('Biblioteca e modelos locais removidos.');
+      $<HTMLDialogElement>('#dialog').close(); toast('Biblioteca desta conta e modelos locais removidos.');
     } catch { toast('Não foi possível apagar todos os dados. Use as configurações de armazenamento do navegador.'); }
   });
 });
@@ -611,8 +656,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 }
 window.addEventListener('offline', () => toast('Você está offline. Vídeos locais continuam disponíveis; a IA precisa dos modelos completos em cache.'));
 window.addEventListener('beforeunload', event => {
-  if (processing || learning.busy || online.busy) { event.preventDefault(); }
+  if (processing || learning.busy || online.busy || backups.busy) { event.preventDefault(); }
 });
 updateProjectUI();
-void refreshLibrary();
-void learning.refresh();
+void access.init();

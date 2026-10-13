@@ -2,6 +2,7 @@
 // Requires the built app's test server on port 4173, Chromium and network access for model GETs.
 import { chromium } from '@playwright/test';
 import { mkdtemp, readFile } from 'node:fs/promises';
+import { localAccessFixture, MODEL_DATABASE } from './local-access-fixture.mjs';
 import { cloudModelTransport } from './model-transport.mjs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,12 +13,14 @@ const context = await chromium.launchPersistentContext(profile, {
   executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
   args: ['--no-sandbox'], headless: true,
 });
+await localAccessFixture(context);
 const transfers = await cloudModelTransport(context);
 const page = await context.newPage();
 let lastMessage = '';
 let timer;
 try {
   await page.goto('http://127.0.0.1:4173/Video_Translate/');
+  await page.locator('#app').waitFor({ state: 'visible' });
   await page.locator('#video-input').setInputFiles(process.env.VIDEO_INPUT);
   await page.waitForFunction(() => !document.querySelector('#process').disabled);
   await page.locator('#process').click();
@@ -38,8 +41,8 @@ try {
   if (!summary.translated || summary.segments < 1) throw new Error('Não foram geradas legendas traduzidas.');
   console.log('Real browser inference passed:', JSON.stringify({ ...summary, modelGETs: transfers() }));
   // Require meaningful timed text in both languages without logging private content.
-  const contentChecks = await page.evaluate(async () => {
-    const db = await new Promise((resolve, reject) => { const request = indexedDB.open('entrelinhas-local'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+  const contentChecks = await page.evaluate(async databaseName => {
+    const db = await new Promise((resolve, reject) => { const request = indexedDB.open(databaseName); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
     const items = await new Promise((resolve, reject) => { const request = db.transaction('projects').objectStore('projects').getAll(); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
     db.close();
     const segments = items.sort((a, b) => b.createdAt - a.createdAt)[0].segments;
@@ -48,11 +51,12 @@ try {
       validTiming: segments.every(s => s.start >= 0 && s.end > s.start && s.end <= document.querySelector('video').duration + .1),
       hasPortugueseWords: segments.some(s => /\b(uma?|para|período|não|você|fechamento|é)\b/i.test(s.translated)),
     };
-  });
+  }, MODEL_DATABASE);
   if (!Object.values(contentChecks).every(Boolean)) throw new Error('Content checks failed: ' + JSON.stringify(contentChecks));
   console.log('Timing and Portuguese text checks passed (private text omitted).');
   // Remove the proxy adapter: offline must use the real browser cache only.
   await context.unrouteAll({ behavior: 'wait' });
+  await localAccessFixture(context);
   await context.setOffline(true);
   const offlineName = `offline-validation-${Date.now()}`;
   await page.locator('#video-input').setInputFiles({
@@ -63,7 +67,7 @@ try {
   await page.locator('#process').click();
   await page.waitForFunction(() => !document.querySelector('#error-panel').hidden || document.querySelector('#progress-area').hidden, undefined, { timeout: 300000 });
   if (await page.locator('#error-panel').isVisible()) throw new Error('Offline translation failed: ' + await page.locator('#error-detail').textContent());
-  console.log('Full offline transcription and translation using cached models passed.');
+  console.log('Offline transcription/translation engine passed using cached models and simulated authorization.');
 } finally {
   clearInterval(timer);
   await context.close();

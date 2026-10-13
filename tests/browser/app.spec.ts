@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -106,15 +106,17 @@ test('PWA is scoped to the Pages subdirectory and the shell works offline', asyn
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
   await context.setOffline(true);
   await page.reload();
+  await expect(page.locator('#access-screen')).toBeVisible();
+  await expect(page.locator('#app')).not.toBeVisible();
+  await context.setOffline(false);
+  await page.reload();
   await expect(page.getByRole('heading', { name: 'Entenda cada palavra.' })).toBeVisible();
-  await page.getByRole('button', { name: 'Instalar aplicativo' }).click();
-  await expect(page.getByRole('heading', { name: 'Seu espaço, sempre por perto.' })).toBeVisible();
 });
 
 test('real browser audio extraction reaches the model download; network failure is visible', async ({ page, context }) => {
   await context.route('https://huggingface.co/**', route => route.abort('blockedbyclient'));
   const uploads: string[] = [];
-  page.on('request', request => { if (request.method() !== 'GET') uploads.push(request.url()); });
+  page.on('request', request => { if (request.method() !== 'GET' && !request.url().includes('/functions/v1/') && !request.url().includes('/auth/v1/')) uploads.push(request.url()); });
   await page.goto('./');
   await page.locator('#video-input').setInputFiles(process.env.EXAMPLE_VIDEO || videoPath);
   await expect(page.locator('#process')).toBeEnabled();

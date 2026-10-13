@@ -13,3 +13,6 @@ playwright-report/
 *.mp3
 *.local
 *.pdf
+!.env.example
+supabase/.temp/
+supabase/.branches/

@@ -20,6 +20,8 @@ for (const [source, name] of [
   ['node_modules/@huggingface/transformers/LICENSE', 'Transformers-Apache-2.0.txt'],
   ['node_modules/lucide/LICENSE', 'Lucide-ISC.txt'],
   ['node_modules/pdfjs-dist/LICENSE', 'PDFjs-Apache-2.0.txt'],
+  ['node_modules/@supabase/supabase-js/LICENSE', 'Supabase-MIT.txt'],
+  ['node_modules/fflate/LICENSE', 'fflate-MIT.txt'],
   ['THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES.md'],
 ]) {
   await copyFile(resolve(source), resolve('public/licenses', name));

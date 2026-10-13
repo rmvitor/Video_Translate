@@ -10,7 +10,7 @@ const icon = (name: string) => `<i data-lucide="${name}" aria-hidden="true"></i>
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 type Options = {
   toast: (message: string) => void; icons: () => void; dialog: (html: string) => void;
-  currentView: () => string; online: ReturnType<typeof createOnlineAssistant>;
+  accountEpoch: () => number; currentView: () => string; online: ReturnType<typeof createOnlineAssistant>;
   changeView: (name: string) => void; isBusy: () => boolean; stopMedia: () => void;
   narrator: LocalNarrator; openVideo: (id: string) => Promise<void>;
   addVideo: (assignment: Assignment) => void;
@@ -82,7 +82,8 @@ export function createLearningArea(options: Options) {
     $('#video-organization').querySelectorAll('select').forEach(select => select.toggleAttribute('disabled', busy || options.isBusy() || (select.id === 'video-subject' && !video?.collectionId)));
   }
   async function refresh() {
-    try { [collections, documents, videos] = await Promise.all([listCollections(), listDocuments(), listProjects()]); }
+    const epoch = options.accountEpoch();
+    try { const values = await Promise.all([listCollections(), listDocuments(), listProjects()]); if (epoch !== options.accountEpoch()) return; [collections, documents, videos] = values; }
     catch { options.toast('Não foi possível carregar todos os materiais locais.'); }
     collections.sort((a, b) => b.createdAt - a.createdAt); documents.sort((a, b) => b.createdAt - a.createdAt);
     if (!busy && current) current = documents.find(d => d.id === current!.id) ?? current;
@@ -367,6 +368,6 @@ export function createLearningArea(options: Options) {
     showVideoInProject: async (id: string) => { const video = options.currentVideo(); if (!video?.collectionId) return; selectedCollection = video.collectionId; await openMaterial(id, 'video'); },
     refresh, renderVideoOrganization, updateVoiceControls,
     flush: () => saveQueue,
-    async reset() { await cancel(); options.narrator.stop(); current = undefined; selectedCollection = undefined; selectedSubject = ''; renderReader(); await refresh(); },
+    async reset() { await cancel(); options.narrator.stop(); current = undefined; activeMaterial = undefined; selectedCollection = undefined; selectedSubject = ''; renderReader(); await refresh(); },
   };
 }
