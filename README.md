@@ -66,13 +66,15 @@ Use **Traduzir texto com Gemini** ou **Analisar texto com Gemini** no material a
 
 O resultado só é salvo depois de **Aplicar traduções revisadas** ou **Salvar análise neste material**. As traduções mantêm os tempos das legendas; a análise apresenta resumo, pontos principais e dúvidas a verificar. Erros de cota, conexão ou formato de resposta preservam os textos existentes. Texto selecionado deixa o dispositivo quando autorizado e passa a ser tratado pelo Google conforme os termos do serviço. A narração continua exclusivamente local, inclusive quando a tradução veio do Gemini.
 
-## Narração em PT-BR
+## Narração contínua em PT-BR e inglês
 
-No vídeo, ative **Narrar em PT-BR** depois de gerar as traduções. O áudio original é silenciado automaticamente; o controle **Silenciar áudio original** também pode ser usado separadamente. A narração acompanha os trechos traduzidos, pausa com o player e se reposiciona após mudanças de tempo. Quando uma fala demora mais que seu trecho, o vídeo aguarda a leitura e depois retoma, para evitar cortar palavras. Ao desligar a narração, o estado de áudio anterior é restaurado, salvo se você alterou manualmente o controle de silenciamento.
+No vídeo, ative **Narrar em PT-BR + inglês**. A voz natural prepara uma sequência de áudio completa antes de começar; aguarde **Narração contínua pronta** e dê play. Os limites dos trechos não interrompem a fala e **não pausam o vídeo automaticamente**. O ritmo da fala se ajusta ao tempo do vídeo entre 0,6× e 2×, preservando o tom. Se o texto ainda demorar mais, a narração termina depois do vídeo, sem cortar palavras. Pausas e buscas feitas pelo usuário continuam funcionando; uma busca começa a leitura pelo trecho correspondente. Ao desligar, o estado anterior de silenciamento é restaurado, salvo se você alterou o controle manualmente.
 
-Nas páginas PDF, **Ler em PT-BR** lê os trechos traduzidos e destaca o parágrafo atual. Também é possível ler um trecho individual, pausar, continuar e parar. Os controles de voz e velocidade se aplicam à leitura.
+Nas páginas PDF, **Ler em PT-BR + inglês** lê os trechos traduzidos em sequência e destaca o parágrafo atual. É possível ler um trecho individual, pausar, continuar e parar. Em **Organização, idioma e voz**, escolha **PT-BR + termos em inglês**, **Somente PT-BR** ou **Inglês (texto original)**. O modo inglês exige texto original em inglês e também lê parágrafos ainda sem tradução.
 
-São aceitas somente vozes que o navegador informa como **locais** e com idioma **pt-BR**. Vozes remotas são excluídas para evitar enviar os textos internos a serviços de fala. Se não aparecer uma voz, instale Português (Brasil) nas configurações de fala/idiomas do sistema e reabra o navegador. A disponibilidade varia conforme sistema e navegador; o app não usa uma voz online como substituta automática.
+Termos como **Insight** e **Home Management** usam pronúncia inglesa no modo misto. Rótulos preservados do original em inglês também podem ser reconhecidos. O campo **Outros termos para pronunciar em inglês** permite acrescentar expressões separadas por vírgulas. Esses ajustes pertencem ao material, ficam na biblioteca local de cada conta e entram no backup criptografado; não alteram a tradução nem são enviados ao Supabase.
+
+A voz natural usa Faber para português e LJSpeech para inglês, ambas geradas no dispositivo. **Preparar vozes** baixa os modelos necessários uma vez; modelos completos em cache podem ser usados offline. A narração não envia texto, áudio nem arquivos para serviços de voz. Vozes do sistema são aceitas somente quando o navegador informa que são locais, em PT-BR ou inglês. Se não houver voz inglesa local no sistema, a leitura mista usa as vozes naturais locais.
 
 ## Privacidade e armazenamento
 
@@ -133,7 +135,7 @@ Esse teste exige acesso aos modelos, espaço e memória. Verifica a extração, 
 
 Os testes de conteúdo introduzidos na versão 0.3 validam organização em lateral, navegação entre vídeo/PDF, retomada, progresso, notas, tema/cor, persistência e privacidade dos pedidos online. A integração Gemini é testada com respostas controladas e uma chave fictícia; nenhuma chamada real com chave pessoal foi feita neste ambiente. A qualidade e disponibilidade do serviço devem ser conferidas usando a chave no aplicativo.
 
-O vídeo de exemplo foi revalidado com FFmpeg, Whisper e Marian reais no Chromium, produzindo cinco trechos traduzidos, seguido de processamento completo offline com os modelos em cache. Uma tradução sintética de espanhol para português também passou com M2M100 real; no runner, os pesos grandes foram transportados por um servidor local de testes para contornar o limite de tamanho do canal DevTools, sem alterar o aplicativo publicado. O PDF de exemplo conserva suas duas páginas, seis imagens extraídas (além da composição preservada nas prévias originais) e 17 blocos de texto. Os testes de voz usam simulação controlada; a reprodução audível depende de uma voz local PT-BR instalada. O layout mobile foi verificado no Chromium, sem teste em hardware mobile.
+O vídeo de exemplo foi revalidado com FFmpeg, Whisper e Marian reais no Chromium, produzindo cinco trechos traduzidos, seguido de processamento completo offline com os modelos em cache. Uma tradução sintética de espanhol para português também passou com M2M100 real; no runner, os pesos grandes foram transportados por um servidor local de testes para contornar o limite de tamanho do canal DevTools, sem alterar o aplicativo publicado. O PDF de exemplo conserva suas duas páginas, seis imagens extraídas (além da composição preservada nas prévias originais) e 17 blocos de texto. Os testes de voz do sistema usam simulação controlada; `test:voice` valida síntese neural real e reprodução no navegador, sem depender de uma voz instalada. O layout mobile foi verificado no Chromium, sem teste em hardware mobile.
 
 Na versão 0.4, os testes também verificam autenticação com serviço controlado, políticas de aprovação/bloqueio, prazo de sessão, painel master, recuperação de senha e backup criptografado. As regras SQL/RLS passam em PostgreSQL real. Ainda não há projeto Supabase hospedado configurado: a ativação remota e o envio de e-mails permanecem pendentes.
 
@@ -148,7 +150,9 @@ Na versão 0.4, os testes também verificam autenticação com serviço controla
 - `src/storage.ts`: biblioteca IndexedDB e remoção de modelos.
 - `src/learning.ts`: projetos, subassuntos, biblioteca de PDFs e leitor de páginas.
 - `src/pdf.ts`: extração local de textos/imagens e preservação das páginas originais com PDF.js.
-- `src/narration.ts`: leitura em PT-BR usando somente vozes locais e sincronização com o vídeo.
+- `src/narration.ts`: leitura contínua em português/inglês, pausa e busca manuais, sem pausas automáticas no vídeo.
+- `src/narration-plan.mjs`: agrupamento de texto e seleção da pronúncia inglesa.
+- `src/neural-voice.worker.ts`: geração local das vozes e montagem de uma faixa contínua, mantida só em memória.
 - `src/online.ts` e `src/cloud-protocol.mjs`: seleção e revisão de textos, pedidos Gemini e validação de respostas.
 - `src/appearance.ts` e `src/preferences.mjs`: preferências e contraste de cores.
 - `src/subtitles.mjs`: importação/exportação e validação de tempos.
@@ -169,10 +173,17 @@ Os modelos e runtimes têm licenças próprias. FFmpeg core é distribuído sob 
 
 Para um Supabase já ativo, aplique **somente a segunda migração** e atualize a função conforme [as instruções de atualização](docs/SUPABASE_SETUP.md#atualizar-um-projeto-já-ativo). O app mantém compatibilidade com os controles anteriores até concluir esses passos.
 
-Teste opcional da voz real, com o servidor de testes em execução: `npm run test:voice`. Usa texto público de teste, verifica duas sínteses na mesma sessão e duas em um novo worker offline. Não valida autorização do Supabase hospedado.
+Teste opcional da voz real, com o servidor de testes em execução: `npm run test:voice`. Usa texto público de teste, verifica síntese em português, inglês e uma faixa bilíngue contínua, controles reais de PDF/vídeo e um novo worker offline com modelos em cache. Não valida autorização do Supabase hospedado.
 
 ### Novidades da versão 0.6
 
 - Biblioteca única com abas **Páginas** e **Vídeos**, leitura e reprodução locais, com navegação por teclado.
 - Crie os materiais em **Páginas PDF** ou **Traduzir vídeo** e use **Veja a tradução: Na biblioteca / No projeto** para acompanhar o resultado.
 - Novas senhas de conta, recuperação e backups aceitam no mínimo **8 caracteres**. Backups anteriores continuam compatíveis. No Supabase hospedado, configure também **Authentication → Providers → Email → Minimum password length** em **8**; o arquivo `supabase/config.toml` não altera esse painel automaticamente.
+
+### Novidades da versão 0.7
+
+- Narração contínua de vídeos e PDFs, com o áudio preparado em sequência para evitar esperas entre trechos.
+- O vídeo segue em movimento; nenhuma palavra é cortada ao ultrapassar o tempo de uma legenda.
+- Voz local em inglês para termos preservados, opção de leitura do original inglês e ajustes de pronúncia por material.
+- Sem mudança no Supabase nem upload de conteúdo. Atualize ou reabra o PWA para carregar a versão nova.

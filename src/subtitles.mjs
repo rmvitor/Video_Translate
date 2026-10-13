@@ -64,6 +64,7 @@ export function validateProject(data) {
     segments,
     sourceLanguage: LANGUAGES.some(([code]) => code === data.sourceLanguage) ? data.sourceLanguage : 'en',
     analysis: typeof data.analysis === 'string' ? data.analysis.slice(0, 40000) : undefined,
+    pronunciationTerms: typeof data.pronunciationTerms === 'string' ? data.pronunciationTerms.slice(0, 2000) : undefined,
     completedAt: Number.isFinite(data.completedAt) && data.completedAt > 0 ? data.completedAt : undefined,
     collectionId: typeof data.collectionId === 'string' ? data.collectionId.slice(0, 100) : undefined,
     subjectId: typeof data.subjectId === 'string' ? data.subjectId.slice(0, 100) : undefined,

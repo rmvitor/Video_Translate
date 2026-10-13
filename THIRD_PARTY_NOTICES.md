@@ -17,6 +17,7 @@ O build distribui bibliotecas e runtimes instalados pelo npm. Preserve as licen�
 | Piper phonemizer | conforme runtime acima | MIT · https://github.com/rhasspy/piper-phonemize |
 | eSpeak NG incorporado no phonemizer WASM | conforme runtime acima | GPL-3.0-or-later · fontes: https://github.com/rhasspy/espeak-ng e https://github.com/wide-video/piper-phonemize |
 | Voz neural PT-BR Faber medium | revisão c10ece1aade47bb51c153c893d14e5bf8e5b7117 | Dataset CC0 conforme MODEL_CARD: https://huggingface.co/rhasspy/piper-voices/blob/c10ece1aade47bb51c153c893d14e5bf8e5b7117/pt/pt_BR/faber/medium/MODEL_CARD |
+| Voz neural inglesa LJSpeech high | revisão c10ece1aade47bb51c153c893d14e5bf8e5b7117 | Dataset em domínio público, modelo treinado do zero conforme MODEL_CARD: https://huggingface.co/rhasspy/piper-voices/blob/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/ljspeech/high/MODEL_CARD · https://keithito.com/LJ-Speech-Dataset/ |
 | whisper-tiny.en (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/whisper-tiny.en |
 | whisper-tiny (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/whisper-tiny |
 | m2m100_418M (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/m2m100_418M · modelo original: https://huggingface.co/facebook/m2m100_418M |

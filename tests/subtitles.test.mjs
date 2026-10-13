@@ -33,12 +33,13 @@ test('invalid subtitles and corrupted projects are rejected', () => {
   assert.throws(() => validateProject({ version: 2, title: 'Test', segments }));
 });
 test('project validation excludes arbitrary fields and preserves the two languages', () => {
-  const project = validateProject({ version: 1, title: 'Test', filename: 'test.mp4', duration: 6, segments, video: 'untrusted', id: 'untrusted', sourceLanguage: 'es', analysis: 'Resumo local', completedAt: 1234, apiKey: 'must-not-import' });
+  const project = validateProject({ version: 1, title: 'Test', filename: 'test.mp4', duration: 6, segments, video: 'untrusted', id: 'untrusted', sourceLanguage: 'es', analysis: 'Resumo local', pronunciationTerms: 'Insight, Home Management', completedAt: 1234, apiKey: 'must-not-import' });
   assert.deepEqual(project.segments, segments);
   assert.equal('video' in project, false);
   assert.equal('id' in project, false);
   assert.equal('apiKey' in project, false);
   assert.equal(project.sourceLanguage, 'es');
   assert.equal(project.analysis, 'Resumo local');
+  assert.equal(project.pronunciationTerms, 'Insight, Home Management');
   assert.equal(project.completedAt, 1234);
 });

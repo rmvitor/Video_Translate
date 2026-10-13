@@ -33,14 +33,16 @@ async function localVoiceFixture(page: import('@playwright/test').Page) {
     localStorage.setItem('entrelinhas.voice','fixture-local');
     const local = { name: 'Voz local de teste', lang: 'pt-BR', voiceURI: 'fixture-local', localService: true, default: true };
     const remote = { name: 'Voz remota proibida', lang: 'pt-BR', voiceURI: 'fixture-remote', localService: false, default: false };
-    const state = { utterances: [] as any[], current: undefined as any, paused: false, canceled: 0 };
+    const english={name:'Local English',lang:'en-US',voiceURI:'fixture-english',localService:true};
+    const state = { utterances: [] as any[], current: undefined as any, paused: false, canceled: 0, queue:[] as any[] };
+    const advance=()=>{if(state.paused||state.current||!state.queue.length)return;const utterance=state.queue.shift();state.current=utterance;queueMicrotask(()=>{if(state.current===utterance)utterance.onstart?.({});});};
     (window as any).__speech = state;
     (window as any).SpeechSynthesisUtterance = class { text: string; constructor(text: string) { this.text = text; } };
     Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
-      getVoices: () => [local, remote], addEventListener: () => {},
-      speak: (utterance: any) => { state.current = utterance; state.utterances.push(utterance); queueMicrotask(() => utterance.onstart?.({})); },
-      cancel: () => { state.current = undefined; state.canceled++; },
-      pause: () => { state.paused = true; }, resume: () => { state.paused = false; },
+      getVoices: () => [local, remote, english, {name:'Remote English',lang:'en-US',voiceURI:'remote-english',localService:false}], addEventListener: () => {},
+      speak: (utterance: any) => { state.utterances.push(utterance);state.queue.push(utterance);const end=utterance.onend;utterance.onend=(event:any)=>{end?.(event);if(state.current===utterance)state.current=undefined;advance();};advance(); },
+      cancel: () => { state.current = undefined;state.queue=[]; state.canceled++; },
+      pause: () => { state.paused = true; }, resume: () => { state.paused = false;advance(); },
     } });
   });
 }
@@ -110,26 +112,33 @@ test('projects and subjects organize a real PDF, preserving images, revisions an
   expect(requests).toEqual([]);
 });
 
-test('video narration mutes original audio, holds for speech, pauses and resynchronizes after seeking', async ({ page }) => {
+test('continuous narration keeps every cue without auto-pausing the video and respects manual pause and seek', async ({ page }) => {
   await localVoiceFixture(page); await page.goto('./');
   await page.locator('#project-input').setInputFiles({ name: 'project.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ version: 1, title: 'Treinamento', filename: 'training.mp4', duration: 4, segments: [{ start: 0, end: .5, original: 'Welcome.', translated: 'Boas-vindas ao treinamento.' }, { start: .8, end: 3.9, original: 'Let us start.', translated: 'Vamos começar a aprender.' }] })) });
   await page.locator('#reattach-button').click();
   await page.locator('#video-input').setInputFiles(videoPath);
   await expect(page.locator('#video')).toBeVisible();
+  await page.locator('#view-video-library').click();
+  await expect(page.locator('#library-outlet #workspace-view')).toBeVisible();
   await page.locator('#video-narration').check();
+  await expect(page.locator('#library-outlet #workspace-view')).toBeVisible();
   await expect(page.locator('#mute-original')).toBeChecked();
   expect(await page.locator('#video').evaluate((v: HTMLVideoElement) => v.muted)).toBe(true);
   await page.locator('#video').evaluate((v: HTMLVideoElement) => v.play());
-  await expect.poll(() => page.evaluate(() => (window as any).__speech.current?.text)).toBe('Boas-vindas ao treinamento.');
-  await expect(page.locator('#narration-status')).toHaveText('Aguardando a leitura do trecho…', { timeout: 10000 });
-  expect(await page.locator('#video').evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
-  await page.evaluate(() => (window as any).__speech.current.onend({}));
-  await expect.poll(() => page.evaluate(() => (window as any).__speech.current?.text)).toBe('Vamos começar a aprender.');
+  await expect.poll(() => page.evaluate(() => (window as any).__speech.current?.text)).toBe('Boas-vindas ao treinamento. Vamos começar a aprender.');
+  await expect.poll(()=>page.locator('#video').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(1.1);
+  expect(await page.locator('#video').evaluate((v:HTMLVideoElement)=>v.paused)).toBe(false);
+  expect(await page.evaluate(()=>(window as any).__speech.utterances.length)).toBe(1);
   await page.locator('#video').evaluate((v: HTMLVideoElement) => v.pause());
   expect(await page.evaluate(() => (window as any).__speech.paused)).toBe(true);
   await page.locator('#video').evaluate((v: HTMLVideoElement) => { v.currentTime = 1.2; });
   await page.locator('#video').evaluate((v: HTMLVideoElement) => v.play());
   await expect.poll(() => page.evaluate(() => (window as any).__speech.current?.text)).toBe('Vamos começar a aprender.');
+  await expect.poll(()=>page.locator('#video').evaluate((v:HTMLVideoElement)=>v.ended),{timeout:10000}).toBe(true);
+  await expect(page.locator('#narration-status')).toContainText('Concluindo');
+  await page.evaluate(()=>(window as any).__speech.current.onend({}));
+  await expect(page.locator('#narration-status')).toHaveText('Narração concluída.');
+  expect(await page.locator('#video').evaluate((v:HTMLVideoElement)=>v.ended)).toBe(true);
   await page.locator('#video-narration').uncheck();
   expect(await page.locator('#video').evaluate((v: HTMLVideoElement) => v.muted)).toBe(false);
   await expect(page.locator('#mute-original')).not.toBeChecked();
@@ -190,4 +199,26 @@ test('creation opens PDF and session video translations in their library tabs wi
   await expect(page.locator('#library-outlet #video')).toBeVisible();
   expect(await page.locator('#video').evaluate((v:HTMLVideoElement)=>v.src)).toBe(blob);
   await expect(page.locator('#library-count')).toHaveText('2');expect(uploads).toEqual([]);
+});
+
+test('bilingual local narration pronounces English labels, saves custom terms per material and reads original English',async({page,context})=>{
+  await localVoiceFixture(page);const outbound:string[]=[];
+  context.on('request',request=>{if(/^https?:/.test(request.url())&&!request.url().startsWith('http://127.0.0.1'))outbound.push(request.url());});
+  await page.goto('./');await page.getByRole('button',{name:'Páginas PDF',exact:true}).click();await page.locator('#pdf-input').setInputFiles(pdfPath);
+  await expect(page.locator('#pdf-reader')).toBeVisible();
+  await page.locator('[data-edit-block]').first().click();await page.locator('#pdf-edit-translation').fill('Abra Home Management e confira o Insight no widget.');await page.getByRole('button',{name:'Salvar tradução',exact:true}).click();
+  await page.locator('#pdf-settings summary').click();await page.locator('[data-english-terms=pdf]').fill('widget');await page.locator('[data-english-terms=pdf]').blur();
+  await page.locator('#read-pdf').click();
+  await expect.poll(()=>page.evaluate(()=>(window as any).__speech.utterances.filter((u:any)=>u.lang==='en-US').map((u:any)=>u.text))).toEqual(['Home Management','Insight','widget.']);
+  const voices=await page.evaluate(()=>(window as any).__speech.utterances.map((u:any)=>({text:u.text,lang:u.lang,voice:u.voice.voiceURI,local:u.voice.localService})));
+  expect(voices.every((voice:any)=>voice.local)).toBe(true);expect(voices.filter((voice:any)=>voice.lang==='en-US').every((voice:any)=>voice.voice==='fixture-english')).toBe(true);
+  await page.locator('#stop-reading').click();
+  await page.locator('[data-narration-language]').filter({visible:true}).selectOption('en-US');await page.locator('#read-pdf').click();
+  await expect.poll(()=>page.evaluate(()=>(window as any).__speech.current?.text)).toContain('Welcome to training');
+  expect(await page.evaluate(()=>(window as any).__speech.current.lang)).toBe('en-US');
+  await page.locator('#stop-reading').click();await page.reload();await page.getByRole('button',{name:'Minha biblioteca'}).click();await page.locator('[data-open-pdf]').click();await page.locator('#pdf-settings summary').click();
+  await expect(page.locator('#library-outlet #pdf-reader')).toBeVisible();
+  await expect(page.locator('[data-english-terms=pdf]')).toBeVisible();
+  await expect(page.locator('[data-english-terms=pdf]')).toHaveValue('widget');
+  expect(outbound).toEqual([]);
 });

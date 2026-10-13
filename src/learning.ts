@@ -16,6 +16,7 @@ type Options = {
   addVideo: (assignment: Assignment) => void;
   currentVideo: () => Project | undefined; refreshVideos: () => Promise<void>;
   assignVideo: (assignment: Assignment) => Promise<void>;
+  setVideoTerms: (value:string) => Promise<void>;
   deleteVideo: (id:string) => Promise<void>;
 };
 
@@ -46,7 +47,12 @@ export function createLearningArea(options: Options) {
   const source=$('#workspace-view .source-settings'),voices=$('#workspace-view .voice-controls');
   const onlineActions=source.querySelector('.inline-actions')!;$('.process-area').before(onlineActions);onlineActions.classList.add('quick-translations');
   videoSettings.append($('#video-organization'),source,voices);
-  voices.insertAdjacentHTML('beforeend','<button type="button" class="button secondary" data-prepare-voice>Preparar voz natural</button><span class="voice-note" data-voice-status></span>');
+  voices.insertAdjacentHTML('beforeend','<button type="button" class="button secondary" data-prepare-voice>Preparar vozes</button><span class="voice-note" data-voice-status></span>');
+
+  function narrationControls(container:HTMLElement,kind:'video'|'pdf',terms=''){
+    container.insertAdjacentHTML('beforeend', `<label>Idioma da narração<select data-narration-language aria-label="Idioma da narração do ${kind==='pdf'?'PDF':'vídeo'}"><option value="mixed">PT-BR + termos em inglês</option><option value="pt-BR">Somente PT-BR</option><option value="en-US">Inglês (texto original)</option></select></label><label class="pronunciation-terms">Outros termos para pronunciar em inglês<textarea data-english-terms="${kind}" rows="2" maxlength="2000" placeholder="Ex.: Insight, Home Management">${esc(terms)}</textarea><small>Separe por vírgulas. Os termos ficam neste material, somente no dispositivo.</small></label>`);
+  }
+  narrationControls(voices,'video');
 
   const portalNodes = ['workspace-view', 'pdf-reader', 'pdf-progress', 'pdf-error'].map(id => {
     const node = $(`#${id}`), home = document.createComment(`${id}-home`); node.before(home); return { node, home };
@@ -120,6 +126,7 @@ export function createLearningArea(options: Options) {
     const video = options.currentVideo();
     $('#video-organization').innerHTML = video ? selectors(video, 'video') : '';
     $('#video-organization').hidden = !video;
+    const terms=$<HTMLTextAreaElement>('[data-english-terms=video]');if(document.activeElement!==terms)terms.value=video?.pronunciationTerms||'';terms.disabled=!video;
     $('#video-result-links')?.remove();
     if (video) $('.player-info').insertAdjacentHTML('afterend', `<div id="video-result-links" class="result-links"><span>Veja a tradução:</span><button class="text-button" id="view-video-library">Na biblioteca</button>${video.collectionId ? '<button class="text-button" id="view-video-project">No projeto</button>' : ''}</div>`);
     $('#video-organization').querySelectorAll('select').forEach(select => select.toggleAttribute('disabled', busy || options.isBusy() || (select.id === 'video-subject' && !video?.collectionId)));
@@ -179,21 +186,25 @@ export function createLearningArea(options: Options) {
     if (!current) { $('#pdf-reader').innerHTML = ''; return; }
     const blocks = current.pages.flatMap(p => p.blocks);
     const remaining = blocks.filter(b => !b.translated).length;
-    $('#pdf-reader').innerHTML = `<button class="text-button back-button" id="back-documents">${icon('arrow-left')}Biblioteca de páginas</button><div class="result-links"><span>Veja a tradução:</span><button class="text-button" id="view-pdf-library">Na biblioteca</button>${current.collectionId ? '<button class="text-button" id="view-pdf-project">No projeto</button>' : ''}</div><div class="reader-heading"><div><h2>${esc(current.title)}</h2><p>${current.pages.length} páginas · ${blocks.length - remaining}/${blocks.length} trechos traduzidos</p></div><div class="inline-actions"><button class="icon-button" id="rename-pdf" aria-label="Renomear página">${icon('pencil')}</button><button class="button secondary" id="export-page">${icon('download')}Exportar página HTML</button></div></div><div class="organization-bar" id="pdf-organization">${selectors(current, 'pdf')}</div><div class="source-settings"><label>Idioma original<select id="pdf-source-language">${LANGUAGES.map(([code, label]) => `<option value="${code}" ${(current!.sourceLanguage || 'en') === code ? 'selected' : ''}>${label}</option>`).join('')}</select></label><div class="inline-actions"><button class="button secondary" id="online-pdf" ${!blocks.length ? 'disabled' : ''}>Traduzir texto com Gemini</button><button class="text-button" id="analyze-pdf" ${!blocks.length ? 'disabled' : ''}>Analisar texto com Gemini</button></div>${current.analysis ? `<details class="analysis-panel"><summary>Análise em PT-BR</summary><p class="analysis-copy">${esc(current.analysis)}</p></details>` : ''}</div><div class="reader-controls"><button class="button primary" id="translate-pdf" ${busy || !blocks.length || !remaining ? 'disabled' : ''}>${icon('languages')}Traduzir ${remaining ? 'textos pendentes' : 'concluído'}</button><button class="button secondary" id="read-pdf">${icon('volume-2')}Ler em PT-BR</button><button class="icon-button" id="pause-reading" aria-label="Pausar ou continuar narração">${icon('pause')}</button><button class="icon-button" id="stop-reading" aria-label="Parar narração">${icon('x')}</button></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local da página"></select></label><label>Velocidade<select data-voice-rate aria-label="Velocidade da narração da página"><option value="0.8">0,8×</option><option value="1">1×</option><option value="1.2">1,2×</option><option value="1.5">1,5×</option></select></label><span class="voice-note">Somente vozes locais PT-BR. Nenhum texto é enviado para narração online.</span></div>${!blocks.length ? '<div class="library-notice">Este PDF não tem uma camada de texto selecionável. As páginas foram preservadas como imagens; OCR de PDFs escaneados ainda não está disponível.</div>' : ''}<div class="reading-pages">${current.pages.map(page => {
+    $('#pdf-reader').innerHTML = `<button class="text-button back-button" id="back-documents">${icon('arrow-left')}Biblioteca de páginas</button><div class="result-links"><span>Veja a tradução:</span><button class="text-button" id="view-pdf-library">Na biblioteca</button>${current.collectionId ? '<button class="text-button" id="view-pdf-project">No projeto</button>' : ''}</div><div class="reader-heading"><div><h2>${esc(current.title)}</h2><p>${current.pages.length} páginas · ${blocks.length - remaining}/${blocks.length} trechos traduzidos</p></div><div class="inline-actions"><button class="icon-button" id="rename-pdf" aria-label="Renomear página">${icon('pencil')}</button><button class="button secondary" id="export-page">${icon('download')}Exportar página HTML</button></div></div><div class="organization-bar" id="pdf-organization">${selectors(current, 'pdf')}</div><div class="source-settings"><label>Idioma original<select id="pdf-source-language">${LANGUAGES.map(([code, label]) => `<option value="${code}" ${(current!.sourceLanguage || 'en') === code ? 'selected' : ''}>${label}</option>`).join('')}</select></label><div class="inline-actions"><button class="button secondary" id="online-pdf" ${!blocks.length ? 'disabled' : ''}>Traduzir texto com Gemini</button><button class="text-button" id="analyze-pdf" ${!blocks.length ? 'disabled' : ''}>Analisar texto com Gemini</button></div>${current.analysis ? `<details class="analysis-panel"><summary>Análise em PT-BR</summary><p class="analysis-copy">${esc(current.analysis)}</p></details>` : ''}</div><div class="reader-controls"><button class="button primary" id="translate-pdf" ${busy || !blocks.length || !remaining ? 'disabled' : ''}>${icon('languages')}Traduzir ${remaining ? 'textos pendentes' : 'concluído'}</button><button class="button secondary" id="read-pdf">${icon('volume-2')}<span id="read-pdf-label">Ler em PT-BR + inglês</span></button><button class="icon-button" id="pause-reading" aria-label="Pausar ou continuar narração">${icon('pause')}</button><button class="icon-button" id="stop-reading" aria-label="Parar narração">${icon('x')}</button></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local da página"></select></label><label>Velocidade<select data-voice-rate aria-label="Velocidade da narração da página"><option value="0.8">0,8×</option><option value="1">1×</option><option value="1.2">1,2×</option><option value="1.5">1,5×</option></select></label><span class="voice-note">A voz natural lê português e termos em inglês em uma sequência contínua. Nenhum texto é enviado para narrar.</span></div>${!blocks.length ? '<div class="library-notice">Este PDF não tem uma camada de texto selecionável. As páginas foram preservadas como imagens; OCR de PDFs escaneados ainda não está disponível.</div>' : ''}<div class="reading-pages">${current.pages.map(page => {
       const elements = [...page.blocks.map(b => ({ y: b.y, html: `<section class="pdf-block ${b.heading ? 'pdf-heading' : ''} ${b.translated ? '' : 'pending'}" data-pdf-block="${b.id}"><div class="pdf-block-actions"><button class="icon-button" data-read-block="${b.id}" aria-label="Ler trecho em PT-BR">${icon('volume-2')}</button><button class="icon-button" data-edit-block="${b.id}" aria-label="Editar tradução do trecho">${icon('pencil')}</button></div><p class="pdf-copy">${esc(b.translated || b.original)}</p><span class="untranslated" ${b.translated ? 'hidden' : ''}>Texto original · tradução pendente</span><details><summary>Texto original</summary><p>${esc(b.original)}</p></details></section>` })), ...page.images.map(image => ({ y: image.y, html: `<figure class="pdf-figure">${image.blank ? '<details><summary>Elemento visual adicional do PDF</summary>' : ''}<a href="${makeURL(image.blob)}" target="_blank" rel="noopener" aria-label="Abrir imagem original da página ${page.number}"><img src="${makeURL(image.blob)}" width="${image.width}" height="${image.height}" style="width:${image.displayWidth ?? image.width}px" alt="Imagem ${page.images.indexOf(image) + 1} da página ${page.number} do PDF" loading="lazy" /></a>${image.blank ? '</details>' : ''}<figcaption>Imagem do PDF original</figcaption></figure>` }))].sort((a, b) => a.y - b.y);
       return `<article class="reading-page"><div class="page-marker">PÁGINA ${page.number}</div>${elements.map(e => e.html).join('')}<details class="pdf-preview"><summary>Ver página original e elementos gráficos</summary><img src="${makeURL(page.preview)}" alt="Página original ${page.number}" loading="lazy" /></details></article>`;
     }).join('')}</div>`;
     const settings=document.createElement('details');settings.className='material-settings';settings.id='pdf-settings';settings.open=readerUI.get(current.id)||false;settings.innerHTML='<summary>Organização, idioma e voz</summary>';
     const organization=$('#pdf-organization'),source=$('#pdf-reader .source-settings'),voices=$('#pdf-reader>.voice-controls'),controls=$('#pdf-reader .reader-controls');
     controls.append(source.querySelector('.inline-actions')!);$('.reader-heading').after(controls);controls.after(settings);settings.append(organization,source,voices);
-    voices.insertAdjacentHTML('beforeend','<button type="button" class="button secondary" data-prepare-voice>Preparar voz natural</button><span class="voice-note" data-voice-status></span>');
+    voices.insertAdjacentHTML('beforeend','<button type="button" class="button secondary" data-prepare-voice>Preparar vozes</button><span class="voice-note" data-voice-status></span>');
+    narrationControls(voices,'pdf',current.pronunciationTerms);
     options.icons(); updateVoiceControls();
   }
   function updateVoiceControls() {
     const narrator = options.narrator;
     document.querySelectorAll<HTMLSelectElement>('[data-voice-select]').forEach(select => {
-      select.innerHTML = narrator.voices.length ? narrator.voices.map(v => `<option value="${esc(v.voiceURI)}" ${v.voiceURI === narrator.voice?.voiceURI ? 'selected' : ''}>${esc(v.name)} · PT-BR</option>`).join('') : '<option value="">Nenhuma voz local PT-BR instalada</option>';
+      select.innerHTML = narrator.voices.length ? narrator.voices.map(v => `<option value="${esc(v.voiceURI)}" ${v.voiceURI === narrator.voice?.voiceURI ? 'selected' : ''}>${esc(v.name)}</option>`).join('') : '<option value="">Nenhuma voz local PT-BR instalada</option>';
     });
+    document.querySelectorAll<HTMLSelectElement>('[data-narration-language]').forEach(select=>{select.value=narrator.language;});
+    const read=$('#read-pdf-label');if(read)read.textContent=narrator.language==='en-US'?'Ler em inglês':narrator.language==='mixed'?'Ler em PT-BR + inglês':'Ler em PT-BR';
+    $('#video-narration-label').textContent=narrator.language==='en-US'?'Narrar em inglês':narrator.language==='mixed'?'Narrar em PT-BR + inglês':'Narrar em PT-BR';
     document.querySelectorAll<HTMLSelectElement>('[data-voice-rate]').forEach(s => { s.value = String(narrator.rate); });
     document.querySelectorAll<HTMLElement>('[data-voice-status]').forEach(element=>{element.textContent=narrator.status;});
     const pause = $('#pause-reading'); if (pause) { (pause as HTMLButtonElement).disabled = narrator.state === 'idle'; pause.title = narrator.state === 'paused' ? 'Continuar narração' : 'Pausar narração'; }
@@ -307,11 +318,11 @@ export function createLearningArea(options: Options) {
   }
   function readBlocks(id?: string) {
     if (!current) return;
-    const blocks = current.pages.flatMap(p => p.blocks).filter(b => b.translated.trim() && (!id || b.id === id));
+    const blocks = current.pages.flatMap(p => p.blocks).filter(b => (options.narrator.language==='en-US'?b.original.trim():b.translated.trim()) && (!id || b.id === id));
     if (!blocks.length) { options.toast('Traduza ou revise o texto em PT-BR antes de narrar.'); return; }
     try {
-      options.narrator.requireVoice(); options.stopMedia();
-      options.narrator.read(blocks.map(b => ({ id: b.id, text: b.translated })), active => {
+      options.narrator.requireVoice(); options.stopMedia(); options.narrator.englishTerms=current.pronunciationTerms||'';
+      options.narrator.read(blocks.map(b => ({ id: b.id, text: b.translated,original:b.original,sourceLanguage:current!.sourceLanguage||'en' })), active => {
         document.querySelectorAll('[data-pdf-block]').forEach(element => element.classList.toggle('is-reading', element.getAttribute('data-pdf-block') === active));
         document.querySelector(`[data-pdf-block="${active}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, error => { document.querySelectorAll('.is-reading').forEach(el => el.classList.remove('is-reading')); if (error) options.toast(error); });
@@ -453,6 +464,8 @@ export function createLearningArea(options: Options) {
     const target = event.target as HTMLSelectElement;
     try {
       if (target.matches('[data-voice-select]')) {const voice=target.value;options.stopMedia();options.narrator.stop();options.narrator.voiceURI=voice;updateVoiceControls();}
+      if (target.matches('[data-narration-language]')) {const language=target.value;options.stopMedia();options.narrator.stop();options.narrator.language=language as 'mixed'|'pt-BR'|'en-US';updateVoiceControls();}
+      if (target.matches('[data-english-terms]')) {options.stopMedia();options.narrator.stop();if(target.dataset.englishTerms==='video')await options.setVideoTerms(target.value);else if(current){current.pronunciationTerms=target.value;await storeCurrent();} }
       if (target.matches('[data-voice-rate]')) options.narrator.rate = Number(target.value);
       if (target.id === 'pdf-source-language' && current && guard()) { current.sourceLanguage = target.value; await storeCurrent(); }
       if (target.id === 'pdf-collection' && current) { current.collectionId = target.value || undefined; current.subjectId = undefined; await storeCurrent(); $('#pdf-organization').innerHTML = selectors(current, 'pdf'); await refresh(); }

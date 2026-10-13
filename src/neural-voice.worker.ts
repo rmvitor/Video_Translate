@@ -1,63 +1,77 @@
 import * as ort from 'onnxruntime-web/wasm';
+import { trimPadding, pcm16, encodeWav } from './voice-audio.mjs';
 
-const MODEL_ROOT='https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/pt/pt_BR/faber/medium/';
+type Language='pt-BR'|'en-US';
+type Chunk={text:string;lang:Language;marks:{id:string;offset:number}[]};
+const ROOT='https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/';
+const VOICES={
+  'pt-BR':{root:ROOT+'pt/pt_BR/faber/medium/',file:'pt_BR-faber-medium',label:'PT-BR'},
+  'en-US':{root:ROOT+'en/en_US/ljspeech/high/',file:'en_US-ljspeech-high',label:'inglês'},
+};
 const CACHE='entrelinhas-voice-v1';
-let session:ort.InferenceSession|undefined,config:any,phonemizer:any,initializing:Promise<void>|undefined;
-let printed:(ids:number[])=>void=()=>{};
-let queue=Promise.resolve();
-const progress=(message:string)=>self.postMessage({type:'progress',message});
-async function resource(name:string) {
-  const url=MODEL_ROOT+name,cache=await caches.open(CACHE),saved=await cache.match(url);
+const models=new Map<Language,{session:ort.InferenceSession;config:any}>();
+let phonemizer:any,printed:(ids:number[])=>void=()=>{},queue=Promise.resolve(),activeId=0;
+const progress=(message:string)=>self.postMessage({id:activeId,type:'progress',message});
+async function resource(language:Language,extension:string){
+  const voice=VOICES[language],url=voice.root+voice.file+extension,cache=await caches.open(CACHE),saved=await cache.match(url);
   if(saved)return saved;
-  progress('Baixando a voz natural PT-BR…');
+  progress(`Baixando a voz natural em ${voice.label}…`);
   const response=await fetch(url);
-  if(!response.ok)throw new Error(`Não foi possível baixar a voz natural (HTTP ${response.status}).`);
-  const copy=response.clone();try{await cache.put(url,copy);}catch{progress('Sem espaço para guardar a voz; disponível nesta sessão.');}
+  if(!response.ok)throw new Error(`Não foi possível baixar a voz em ${voice.label} (HTTP ${response.status}).`);
+  try{await cache.put(url,response.clone());}catch{progress('Sem espaço para guardar a voz; disponível nesta sessão.');}
   return response;
 }
-async function prepare(baseURL:string) {
-  if(session)return;
-  if(initializing)return initializing;
-  initializing=(async()=>{
-    progress('Preparando a voz neural local…');
+async function prepare(baseURL:string,language:Language){
+  if(models.has(language))return models.get(language)!;
+  if(!phonemizer){
+    progress('Preparando as vozes locais…');
     ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;ort.env.wasm.wasmPaths=new URL('runtime/',baseURL).href;
     const runtime=new URL('runtime/piper/',baseURL).href;
     const {default:createPiper}=await import(/* @vite-ignore */ `${runtime}piper-phonemize.mjs`);
     phonemizer=await createPiper({noInitialRun:true,noExitRuntime:true,locateFile:(file:string)=>runtime+file,
-      print:(line:string)=>{try{const value=JSON.parse(line);if(Array.isArray(value.phoneme_ids))printed(value.phoneme_ids);}catch{/* Ignore runtime diagnostics; never log the supplied text. */}},
-      printErr:()=>{},
+      print:(line:string)=>{try{const value=JSON.parse(line);if(Array.isArray(value.phoneme_ids))printed(value.phoneme_ids);}catch{/* Never log supplied text. */}},printErr:()=>{},
     });
-    config=await (await resource('pt_BR-faber-medium.onnx.json')).json();
-    const model=await (await resource('pt_BR-faber-medium.onnx')).arrayBuffer();
-    progress('Carregando a voz natural no dispositivo…');
-    session=await ort.InferenceSession.create(model,{executionProviders:['wasm']});
-    progress('Voz Faber pronta. Narração gerada neste dispositivo.');
-  })();
-  try{await initializing;}finally{initializing=undefined;}
+  }
+  const config=await(await resource(language,'.onnx.json')).json();
+  const bytes=await(await resource(language,'.onnx')).arrayBuffer();
+  progress(`Carregando a voz em ${VOICES[language].label} no dispositivo…`);
+  const session=await ort.InferenceSession.create(bytes,{executionProviders:['wasm']});
+  const model={session,config};models.set(language,model);return model;
 }
-function wav(samples:Float32Array,rate:number) {
-  const bytes=new ArrayBuffer(44+samples.length*2),view=new DataView(bytes);
-  const tag=(offset:number,text:string)=>[...text].forEach((letter,index)=>view.setUint8(offset+index,letter.charCodeAt(0)));
-  tag(0,'RIFF');view.setUint32(4,bytes.byteLength-8,true);tag(8,'WAVE');tag(12,'fmt ');
-  view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,rate,true);
-  view.setUint32(28,rate*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);tag(36,'data');view.setUint32(40,samples.length*2,true);
-  samples.forEach((sample,index)=>view.setInt16(44+index*2,Math.max(-1,Math.min(1,sample))*(sample<0?32768:32767),true));return bytes;
+async function generate(chunk:Chunk,baseURL:string){
+  const {session,config}=await prepare(baseURL,chunk.lang);
+  const ids=await new Promise<number[]>((resolve,reject)=>{
+    let complete=false;printed=value=>{complete=true;resolve(value);};
+    try{phonemizer.callMain(['-l',config.espeak.voice,'--input',JSON.stringify([{text:chunk.text.trim()}]),'--espeak_data','/espeak-ng-data']);if(!complete)reject(new Error('Não foi possível preparar a pronúncia local.'));}catch{reject(new Error('Não foi possível preparar a pronúncia local.'));}
+  });
+  const input=BigInt64Array.from(ids,BigInt);
+  const result=await session.run({input:new ort.Tensor('int64',input,[1,input.length]),input_lengths:new ort.Tensor('int64',BigInt64Array.from([input.length],BigInt)),scales:new ort.Tensor('float32',Float32Array.from([config.inference.noise_scale,config.inference.length_scale,config.inference.noise_w]))});
+  if(config.audio.sample_rate!==22050)throw new Error('Formato de voz local incompatível.');
+  return pcm16(trimPadding(result.output.data as Float32Array,22050));
 }
 self.onmessage=event=>{
-  const {id,text,baseURL}=event.data;
+  const {id,text,chunks:provided,baseURL,languages}=event.data;
   queue=queue.then(async()=>{
-    try {
-      await prepare(baseURL);
-      if(typeof text!=='string'||text.length>1000)throw new Error('Trecho de narração inválido.');
-      if(!text.trim()){self.postMessage({id,type:'ready'});return;}
-      const ids=await new Promise<number[]>((resolve,reject)=>{
-        let complete=false;printed=value=>{complete=true;resolve(value);};
-        try{phonemizer.callMain(['-l',config.espeak.voice,'--input',JSON.stringify([{text:text.trim()}]),'--espeak_data','/espeak-ng-data']);if(!complete)reject(new Error('Não foi possível preparar a pronúncia local.'));}catch{reject(new Error('Não foi possível preparar a pronúncia local.'));}
-      });
-      const input=BigInt64Array.from(ids,BigInt);
-      const result=await session!.run({input:new ort.Tensor('int64',input,[1,input.length]),input_lengths:new ort.Tensor('int64',BigInt64Array.from([input.length],BigInt)),scales:new ort.Tensor('float32',Float32Array.from([config.inference.noise_scale,config.inference.length_scale,config.inference.noise_w]))});
-      const audio=wav(result.output.data as Float32Array,config.audio.sample_rate);
-      self.postMessage({id,type:'audio',audio},[audio]);
-    }catch(error){self.postMessage({id,type:'error',message:error instanceof Error?error.message:'Não foi possível gerar a voz natural neste dispositivo.'});}
+    activeId=id;
+    try{
+      const chunks:Chunk[]=provided??(typeof text==='string'&&text.trim()?[{text,lang:'pt-BR',marks:[]}]:[]);
+      if(!Array.isArray(chunks)||chunks.length>4096||chunks.some(chunk=>typeof chunk.text!=='string'||chunk.text.length>1000||!Object.hasOwn(VOICES,chunk.lang)||!Array.isArray(chunk.marks)||chunk.marks.some(mark=>typeof mark.id!=='string'||mark.id.length>100||!Number.isInteger(mark.offset)||mark.offset<0||mark.offset>chunk.text.length))||chunks.reduce((sum,chunk)=>sum+chunk.text.length,0)>60000)throw new Error('Texto de narração inválido.');
+      if(!chunks.length){
+        const selected:Language[]=languages??['pt-BR'];
+        if(!Array.isArray(selected)||selected.length>2||selected.some(language=>!Object.hasOwn(VOICES,language)))throw new Error('Idioma de voz inválido.');
+        for(const language of selected)await prepare(baseURL,language);
+        progress('Vozes prontas. Narração gerada neste dispositivo.');self.postMessage({id,type:'ready'});return;
+      }
+      const parts:Int16Array[]=[],marks:{id:string;start:number}[]=[];let length=0;
+      for(const [index,chunk] of chunks.entries()){
+        progress(`Preparando a narração contínua: ${index+1} de ${chunks.length}…`);
+        const samples=await generate(chunk,baseURL);
+        for(const mark of chunk.marks)marks.push({id:mark.id,start:(length+samples.length*mark.offset/Math.max(1,chunk.text.length))/22050});
+        parts.push(samples);length+=samples.length;
+        if(length*2>128*1024*1024)throw new Error('Narração muito longa para uma única leitura. Leia uma parte por vez.');
+      }
+      const audio=encodeWav(parts,22050);
+      progress('Narração contínua pronta.');self.postMessage({id,type:'audio',audio,duration:length/22050,marks},[audio]);
+    }catch(error){self.postMessage({id,type:'error',message:error instanceof Error?error.message:'Não foi possível gerar as vozes neste dispositivo.'});}
   });
 };

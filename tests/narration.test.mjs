@@ -1,0 +1,43 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {buildNarrationPlan,pronunciationRuns,playbackRateForVideo} from '../src/narration-plan.mjs';
+import {trimPadding,pcm16,encodeWav} from '../src/voice-audio.mjs';
+
+test('continuous planning joins Portuguese sections without dropping words or section markers',()=>{
+ const items=[{id:'1',text:'Bem-vindo ao treinamento.'},{id:'2',text:'Vamos iniciar a configuração.'},{id:'3',text:'Confira todos os dados.'}];
+ const chunks=buildNarrationPlan(items);
+ assert.equal(chunks.length,1);assert.equal(chunks[0].text,items.map(item=>item.text).join(' '));
+ assert.deepEqual(chunks[0].marks.map(mark=>mark.id),['1','2','3']);
+ const long='Este treinamento mostra cada etapa em detalhes. '.repeat(40);
+ const split=buildNarrationPlan([{id:'long',text:long}]);
+ assert.ok(split.every(chunk=>chunk.text.length<=600));assert.equal(split.map(chunk=>chunk.text).join(' '),long.trim());
+});
+test('English terms use English pronunciation while Portuguese context is preserved',()=>{
+ const text='Veja o Insight e abra Home Management para continuar.';
+ const runs=pronunciationRuns(text,'Open Insight and Home Management to continue.');
+ assert.deepEqual(runs.filter(run=>run.lang==='en-US').map(run=>run.text),['Insight','Home Management']);
+ assert.equal(runs.map(run=>run.text).join(''),text);
+ assert.ok(pronunciationRuns('Confira o total local e o status.','Check the local total and status.').every(run=>run.lang==='pt-BR'));
+ assert.deepEqual(pronunciationRuns('Abra Account Settings agora.','Open Account Settings now.').filter(run=>run.lang==='en-US').map(run=>run.text),['Account Settings']);
+ assert.deepEqual(pronunciationRuns('Escolha o widget.','','widget').filter(run=>run.lang==='en-US').map(run=>run.text),['widget.']);
+ assert.ok(pronunciationRuns(text,'','','en','pt-BR').every(run=>run.lang==='pt-BR'));
+});
+test('English-only narration reads original text and rejects sources in other languages',()=>{
+ const chunks=buildNarrationPlan([{id:'cue',text:'Veja a página inicial.',original:'Open Home Management.',sourceLanguage:'en'}],'en-US');
+ assert.equal(chunks[0].text,'Open Home Management.');assert.equal(chunks[0].lang,'en-US');
+ assert.throws(()=>buildNarrationPlan([{id:'1',text:'Olá',original:'Hola',sourceLanguage:'es'}],'en-US'),/original em inglês/);
+});
+test('continuous WAV assembly trims padding, preserves internal pauses and joins all speech samples',()=>{
+ const input=new Float32Array(1000);input.fill(.25,400,430);input.fill(-.25,700,730);
+ const trimmed=trimPadding(input,1000);
+ assert.equal(trimmed.filter(sample=>sample!==0).length,60);
+ assert.ok(trimmed.length>300); // Silence between words stays intact.
+ const a=pcm16(new Float32Array([.5,-.5])),b=pcm16(new Float32Array([1,-1]));
+ const wav=encodeWav([a,b],22050),view=new DataView(wav);
+ assert.equal(view.getUint32(40,true),8);assert.equal(view.getUint32(24,true),22050);
+ assert.deepEqual([...new Int16Array(wav,44)],[16383,-16384,32767,-32768]);
+});
+test('speech pace adapts to the video within an intelligible range instead of pausing or skipping content',()=>{
+ assert.equal(playbackRateForVideo(12,10),1.2);assert.equal(playbackRateForVideo(50,10),2);
+ assert.equal(playbackRateForVideo(8,10,1,1.5),1.2000000000000002);assert.equal(playbackRateForVideo(0,10,.8),.8);
+});
