@@ -61,6 +61,10 @@ O workflow em `.github/workflows/pages.yml` instala com `npm ci`, executa os tes
 
 O workflow está preparado no código; criar os arquivos localmente não publica o site.
 
+Use somente esse workflow para publicar o Entrelinhas. Um workflow Jekyll paralelo publica o código-fonte sem compilação e pode sobrescrever a PWA. O identificador de instalação é `/Video_Translate/`; os caminhos relativos de início e escopo ficam restritos ao diretório do aplicativo. O membro `id` do manifest é resolvido contra a origem, e não contra a pasta: `id: "./"` faria outros aplicativos do mesmo domínio compartilharem a identidade.
+
+Se uma instalação antiga confundiu o Entrelinhas com o Implanta, abra os endereços de cada projeto no navegador e instale as versões com os IDs corrigidos. Remova o atalho/aplicativo antigo que ficou com o nome errado, mantendo desmarcada qualquer opção de apagar dados do site. Não limpe os dados do domínio: isso poderia apagar bibliotecas e informações locais dos dois aplicativos.
+
 ## Testes de navegador
 
 Os testes usam um servidor estático com o prefixo `/Video_Translate/`, reproduzindo o caminho do Pages. Eles verificam reprodução local, importação, edição, sincronização, exportação, persistência, exclusão, layout mobile, escape de textos e o shell offline. Também exercitam a extração real de áudio com FFmpeg WASM.

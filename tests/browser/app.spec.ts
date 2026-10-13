@@ -92,6 +92,15 @@ test('PWA is scoped to the Pages subdirectory and the shell works offline', asyn
   });
   const manifest = await page.evaluate(async () => (await fetch('./manifest.webmanifest')).json());
   expect(manifest.display).toBe('standalone');
+  // Manifest id is resolved against start_url's origin, unlike scope/start_url.
+  // './' would collide with every other PWA using './' on this GitHub Pages domain.
+  const origin = new URL(page.url()).origin;
+  expect(new URL(manifest.id, origin).pathname).toBe('/Video_Translate/');
+  expect(new URL(manifest.id, origin).href).not.toBe(new URL('/Implantation-WS/', origin).href);
+  const cdp = await context.newCDPSession(page);
+  const processed = await cdp.send('Page.getAppManifest');
+  expect(processed.manifest.id).toBe(`${origin}/Video_Translate/`);
+  expect(processed.manifest.scope).toBe(`${origin}/Video_Translate/`);
   expect(manifest.scope).toBe('./');
   await page.reload();
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
