@@ -29,12 +29,14 @@ export function createLearningArea(options: Options) {
   let saveQueue = Promise.resolve();
   let operation = 0;
   let activeMaterial: { id: string; kind: 'video' | 'pdf' } | undefined;
+  let libraryMaterial: typeof activeMaterial, libraryTab: 'pdf' | 'video' = 'pdf';
+  let collectionMarkupKey = '', refreshVersion = 0;
   const notesUI=new Map<string,{open:boolean;draft:string}>(),readerUI=new Map<string,boolean>();
   const makeURL = (blob: Blob) => { const url = URL.createObjectURL(blob); urls.push(url); return url; };
 
   $('main').insertAdjacentHTML('beforeend', `
     <section id="collections-view" hidden><div class="page-heading" id="collections-home-heading"><div><div class="eyebrow">TUDO NO SEU LUGAR</div><h1>Projetos e assuntos<span>.</span></h1><p>Organize vídeos e páginas de leitura do seu jeito, neste dispositivo.</p></div><button class="button primary" id="new-collection">${icon('plus')}Criar projeto</button></div><div id="collection-content"></div></section>
-    <section id="documents-view" hidden><div class="page-heading"><div><div class="eyebrow">LEIA NO SEU IDIOMA</div><h1>Páginas traduzidas<span>.</span></h1><p>O texto em português, com as imagens do seu PDF.</p></div><button class="button primary" id="add-pdf">${icon('plus')}Adicionar PDF</button></div><div class="library-notice">${icon('shield-check')}Texto e imagens ficam neste navegador. O PDF é lido localmente; o Gemini recebe somente o texto selecionado, após sua autorização.</div><div id="pdf-progress" class="pdf-progress" hidden aria-live="polite"><strong id="pdf-progress-label">Preparando…</strong><button class="text-button" id="cancel-pdf">Cancelar</button></div><div id="pdf-error" class="error-panel" hidden role="alert"></div><div id="pdf-list" class="library-grid"></div><div id="pdf-reader" hidden></div></section>
+    <section id="documents-view" hidden><div class="page-heading"><div><div class="eyebrow">LEIA NO SEU IDIOMA</div><h1>Criar página<span>.</span></h1><p>Adicione seu PDF e prepare a tradução. Veja o resultado na biblioteca ou no projeto.</p></div><button class="button primary" id="add-pdf">${icon('plus')}Adicionar PDF</button></div><div class="library-notice">${icon('shield-check')}Texto e imagens ficam neste navegador. O PDF é lido localmente; o Gemini recebe somente o texto selecionado, após sua autorização.</div><div id="pdf-progress" class="pdf-progress" hidden aria-live="polite"><strong id="pdf-progress-label">Preparando…</strong><button class="text-button" id="cancel-pdf">Cancelar</button></div><div id="pdf-error" class="error-panel" hidden role="alert"></div><div id="pdf-reader" hidden></div></section>
     <input id="pdf-input" type="file" accept="application/pdf,.pdf" hidden />
   `);
   $('.player-info').insertAdjacentHTML('afterend', `<div id="video-organization" class="organization-bar"></div>`);
@@ -51,10 +53,40 @@ export function createLearningArea(options: Options) {
   });
   function restorePortals() { for (const { node, home } of portalNodes) { home.after(node); if (node.id === 'workspace-view') node.hidden = options.currentView() !== 'workspace'; } }
   function mountMaterial() {
-    if (options.currentView() !== 'collections' || !activeMaterial) return;
-    const outlet = $('#project-outlet'); if (!outlet) return;
-    const ids = activeMaterial.kind === 'video' ? ['workspace-view'] : ['pdf-progress', 'pdf-error', 'pdf-reader'];
+    const material = options.currentView() === 'library' ? libraryMaterial : options.currentView() === 'collections' ? activeMaterial : undefined;
+    if (!material) return;
+    const outlet = $(options.currentView() === 'library' ? '#library-outlet' : '#project-outlet'); if (!outlet) return;
+    if (material.kind === 'pdf' && current?.id !== material.id) { current = documents.find(value => value.id === material.id); renderReader(); }
+    const ids = material.kind === 'video' ? ['workspace-view'] : ['pdf-progress', 'pdf-error', 'pdf-reader'];
     for (const { node } of portalNodes) if (ids.includes(node.id)) { outlet.append(node); if (node.id === 'workspace-view') node.hidden = false; }
+  }
+  function syncView() {
+    restorePortals();
+    $('#library-browser').hidden = Boolean(libraryMaterial);
+    $('#library-reader').hidden = !libraryMaterial;
+    for (const kind of ['pdf', 'video'] as const) {
+      const tab = $<HTMLButtonElement>(`#library-tab-${kind}`);
+      tab.setAttribute('aria-selected', String(libraryTab === kind)); tab.tabIndex = libraryTab === kind ? 0 : -1;
+      $(kind === 'pdf' ? '#library-pages-panel' : '#library-video-panel').hidden = libraryTab !== kind;
+    }
+    mountMaterial();
+  }
+  function libraryList(kind: 'pdf' | 'video') {
+    if (!guard()) return;
+    options.stopMedia(); options.narrator.stop(); libraryMaterial = undefined; libraryTab = kind;
+    options.changeView('library'); syncView();
+  }
+  async function openLibraryMaterial(id: string, kind: 'pdf' | 'video') {
+    if (!guard()) return;
+    if (kind === 'pdf') {
+      current = documents.find(d => d.id === id); if (!current) return;
+      options.stopMedia(); options.narrator.stop(); $('#pdf-error').hidden = true; renderReader();
+    } else {
+      if (options.currentVideo()?.id !== id) await options.openVideo(id); else options.stopMedia();
+      if (options.currentVideo()?.id !== id) return;
+    }
+    libraryMaterial = { id, kind }; libraryTab = kind;
+    options.changeView('library'); syncView();
   }
   const orderedMaterials = () => {
     const collection = selected(); if (!collection) return [];
@@ -88,15 +120,18 @@ export function createLearningArea(options: Options) {
     const video = options.currentVideo();
     $('#video-organization').innerHTML = video ? selectors(video, 'video') : '';
     $('#video-organization').hidden = !video;
+    $('#video-result-links')?.remove();
+    if (video) $('.player-info').insertAdjacentHTML('afterend', `<div id="video-result-links" class="result-links"><span>Veja a tradução:</span><button class="text-button" id="view-video-library">Na biblioteca</button>${video.collectionId ? '<button class="text-button" id="view-video-project">No projeto</button>' : ''}</div>`);
     $('#video-organization').querySelectorAll('select').forEach(select => select.toggleAttribute('disabled', busy || options.isBusy() || (select.id === 'video-subject' && !video?.collectionId)));
   }
   async function refresh() {
-    const epoch = options.accountEpoch();
-    try { const values = await Promise.all([listCollections(), listDocuments(), listProjects()]); if (epoch !== options.accountEpoch()) return; [collections, documents, videos] = values; }
+    const epoch = options.accountEpoch(), version = ++refreshVersion;
+    try { const values = await Promise.all([listCollections(), listDocuments(), listProjects()]); if (epoch !== options.accountEpoch() || version !== refreshVersion) return; [collections, documents, videos] = values; }
     catch { options.toast('Não foi possível carregar todos os materiais locais.'); }
     collections.sort((a, b) => b.createdAt - a.createdAt); documents.sort((a, b) => b.createdAt - a.createdAt);
     if (!busy && current) current = documents.find(d => d.id === current!.id) ?? current;
     renderCollections(); renderDocumentList(); renderVideoOrganization();
+    $('#library-count').textContent = String(documents.length + videos.length); syncView();
   }
   function materialCard(material: Project | PdfDocument, kind: 'video' | 'pdf') {
     return `<article class="material-card ${activeMaterial?.id === material.id ? 'is-active' : ''}"><button class="outline-material" data-material="${material.id}" data-kind="${kind}" ${activeMaterial?.id === material.id ? 'aria-current="page"' : ''}><span class="completion-marker ${material.completedAt ? 'completed' : ''}">${material.completedAt ? icon('check') : ''}</span>${icon(kind === 'pdf' ? 'file-text' : 'file-video')}<span>${esc(material.title)}<small>${kind === 'pdf' ? `${(material as PdfDocument).pages.length} páginas` : 'Vídeo'}${material.completedAt ? ' · Concluído' : ''}</small></span></button><div class="outline-actions"><button class="icon-button" data-move-material="${material.id}" data-kind="${kind}" aria-label="Mover ${esc(material.title)}">${icon('arrow-up-right')}</button><button class="icon-button" data-remove-material="${material.id}" data-kind="${kind}" aria-label="Excluir ${esc(material.title)}">${icon('trash-2')}</button></div></article>`;
@@ -109,6 +144,7 @@ export function createLearningArea(options: Options) {
     content.dataset.projectId=collection?.id||'';
     $('#collections-home-heading').hidden=Boolean(collection);$('#collections-view').classList.toggle('project-open',Boolean(collection));
     if (!collection) {
+      collectionMarkupKey = '';
       $('#collection-content').innerHTML = collections.length ? `<div class="collection-grid">${collections.map(c => {
         const items = [...videos, ...documents].filter(v => v.collectionId === c.id), done = items.filter(v => v.completedAt).length;
         return `<article class="collection-card"><span class="collection-symbol">${icon('folder-open')}</span><h2>${esc(c.title)}</h2><p>${c.subjects.length} subassuntos · ${done}/${items.length} concluídos</p><button class="button secondary" data-collection="${c.id}">Abrir projeto ${icon('chevron-right')}</button><button class="icon-button" data-delete-collection="${c.id}" aria-label="Excluir projeto ${esc(c.title)}">${icon('trash-2')}</button></article>`;
@@ -117,17 +153,21 @@ export function createLearningArea(options: Options) {
       const materials = orderedMaterials();
       if (activeMaterial && !materials.some(m => m.value.id === activeMaterial!.id)) activeMaterial = undefined;
       const active = materials.find(m => m.value.id === activeMaterial?.id), index = materials.findIndex(m => m.value.id === activeMaterial?.id);
+      // Keep the outline DOM when only the material reader needs refreshing.
+      // Replacing a summary between pointer-down and click would lose its toggle.
+      const markupKey = JSON.stringify({id:collection.id,title:collection.title,subjects:collection.subjects,notes:collection.notes,selectedSubject,activeMaterial,materials:materials.map(m=>({id:m.value.id,kind:m.kind,title:m.value.title,collectionId:m.value.collectionId,subjectId:m.value.subjectId,sortOrder:m.value.sortOrder,completedAt:m.value.completedAt,pages:m.kind==='pdf'?(m.value as PdfDocument).pages.length:undefined}))});
+      if (markupKey === collectionMarkupKey) { mountMaterial(); return; }
+      collectionMarkupKey = markupKey;
       const completed = materials.filter(m => m.value.completedAt).length;
       const groups = [...collection.subjects, { id: '__none', title: 'Sem subassunto' }];
       $('#collection-content').innerHTML = `<nav class="project-tabs" aria-label="Navegação de projetos"><button class="text-button back-button" id="back-collections">${icon('arrow-left')}Todos os projetos</button><span aria-current="page">${esc(collection.title)}</span></nav><div class="collection-header"><div><h2>${esc(collection.title)}</h2><p>${completed}/${materials.length} materiais concluídos neste dispositivo</p><progress max="${materials.length || 1}" value="${completed}" aria-label="Progresso do projeto"></progress></div><div class="inline-actions"><button class="icon-button" id="rename-collection" aria-label="Renomear projeto">${icon('pencil')}</button></div></div><div class="project-layout"><aside class="project-outline" aria-label="Materiais do projeto"><h3>Acompanhamento</h3>${groups.map(group => `<section class="outline-topic"><button data-subject="${group.id}" class="topic-title ${selectedSubject === group.id ? 'active' : ''}">${esc(group.title)}</button><div class="material-list">${materials.filter(m => group.id === '__none' ? !collection.subjects.some(subject => subject.id === m.value.subjectId) : m.value.subjectId === group.id).map(m => materialCard(m.value, m.kind)).join('') || '<p class="topic-empty">Sem materiais</p>'}</div></section>`).join('')}<button class="text-button" id="new-subject">${icon('plus')}Novo subassunto</button>${selectedSubject && selectedSubject !== '__none' ? '<div class="topic-actions"><button class="text-button" id="rename-subject">Renomear subassunto</button><button class="text-button" id="remove-subject">Remover subassunto</button></div>' : ''}<div class="material-actions"><button class="button primary" id="collection-pdf">${icon('plus')}Adicionar PDF</button><button class="button secondary" id="collection-video">${icon('plus')}Adicionar vídeo</button></div><details class="project-notes"><summary>Notas do projeto</summary><label class="field-label">Anotações locais<textarea id="project-notes" rows="5" maxlength="20000">${esc(collection.notes)}</textarea></label><button class="button secondary" id="save-project-notes">Salvar notas</button></details></aside><section class="project-stage" aria-label="Conteúdo do projeto"><div class="course-navigation"><button class="text-button" id="previous-material" ${index <= 0 ? 'disabled' : ''}>${icon('arrow-left')}Anterior</button><span>${active ? `${index + 1} de ${materials.length}` : 'Selecione um material'}</span><button class="text-button" id="next-material" ${index < 0 || index >= materials.length - 1 ? 'disabled' : ''}>Próximo${icon('chevron-right')}</button>${active ? `<button class="button ${active.value.completedAt ? 'secondary' : 'primary'}" id="toggle-completed">${icon('check')}${active.value.completedAt ? 'Marcar como pendente' : 'Marcar como concluído'}</button>` : ''}</div><div id="project-outlet">${active ? '' : '<div class="no-results">Abra um material na lateral para acompanhar o projeto. Selecione um subassunto antes de adicionar novos arquivos.</div>'}</div></section></div>`;
       const state=notesUI.get(collection.id);if(state){$<HTMLDetailsElement>('.project-notes').open=state.open;$<HTMLTextAreaElement>('#project-notes').value=state.draft;}
       mountMaterial();
     }
-    options.icons();
+    mountMaterial(); options.icons();
   }
   function renderDocumentList() {
-    $('#pdf-list').hidden = Boolean(current);
-    $('#pdf-list').innerHTML = documents.length ? documents.map(d => `<article class="doc-card"><div class="doc-card-top">${icon('file-text')}<span>${d.pages.length} ${d.pages.length === 1 ? 'página' : 'páginas'}</span></div><h2>${esc(d.title)}</h2><p>${esc(collections.find(c => c.id === d.collectionId)?.title ?? 'Sem projeto')}</p><div class="library-actions"><button class="button secondary" data-open-pdf="${d.id}">Abrir página ${icon('arrow-up-right')}</button><button class="icon-button" data-delete-pdf="${d.id}" aria-label="Excluir PDF ${esc(d.title)}">${icon('trash-2')}</button></div></article>`).join('') : `<div class="library-empty">${icon('file-text')}<h2>Seu próximo capítulo, em português.</h2><p>Adicione um PDF com texto selecionável. As imagens são preservadas e os textos podem ser revisados.</p><button class="button primary" data-add-pdf>${icon('plus')}Selecionar PDF</button></div>`;
+    $('#pdf-list').innerHTML = documents.length ? documents.map(d => `<article class="doc-card"><div class="doc-card-top">${icon('file-text')}<span>${d.pages.length} ${d.pages.length === 1 ? 'página' : 'páginas'}</span></div><h2>${esc(d.title)}</h2><p>${esc(collections.find(c => c.id === d.collectionId)?.title ?? 'Sem projeto')}</p><div class="library-actions"><button class="button secondary" data-open-pdf="${d.id}">Ver tradução ${icon('arrow-up-right')}</button><button class="icon-button" data-delete-pdf="${d.id}" aria-label="Excluir PDF ${esc(d.title)}">${icon('trash-2')}</button></div></article>`).join('') : `<div class="library-empty">${icon('file-text')}<h2>Seu próximo capítulo, em português.</h2><p>Adicione um PDF com texto selecionável. As imagens são preservadas e os textos podem ser revisados.</p><button class="button primary" data-add-pdf>${icon('plus')}Selecionar PDF</button></div>`;
     options.icons();
   }
   function renderReader() {
@@ -136,11 +176,10 @@ export function createLearningArea(options: Options) {
     for (const url of urls) URL.revokeObjectURL(url);
     urls = [];
     $('#pdf-reader').hidden = !current;
-    $('#pdf-list').hidden = Boolean(current);
     if (!current) { $('#pdf-reader').innerHTML = ''; return; }
     const blocks = current.pages.flatMap(p => p.blocks);
     const remaining = blocks.filter(b => !b.translated).length;
-    $('#pdf-reader').innerHTML = `<button class="text-button back-button" id="back-documents">${icon('arrow-left')}Todos os PDFs</button><div class="reader-heading"><div><h2>${esc(current.title)}</h2><p>${current.pages.length} páginas · ${blocks.length - remaining}/${blocks.length} trechos traduzidos</p></div><div class="inline-actions"><button class="icon-button" id="rename-pdf" aria-label="Renomear página">${icon('pencil')}</button><button class="button secondary" id="export-page">${icon('download')}Exportar página HTML</button></div></div><div class="organization-bar" id="pdf-organization">${selectors(current, 'pdf')}</div><div class="source-settings"><label>Idioma original<select id="pdf-source-language">${LANGUAGES.map(([code, label]) => `<option value="${code}" ${(current!.sourceLanguage || 'en') === code ? 'selected' : ''}>${label}</option>`).join('')}</select></label><div class="inline-actions"><button class="button secondary" id="online-pdf" ${!blocks.length ? 'disabled' : ''}>Traduzir texto com Gemini</button><button class="text-button" id="analyze-pdf" ${!blocks.length ? 'disabled' : ''}>Analisar texto com Gemini</button></div>${current.analysis ? `<details class="analysis-panel"><summary>Análise em PT-BR</summary><p class="analysis-copy">${esc(current.analysis)}</p></details>` : ''}</div><div class="reader-controls"><button class="button primary" id="translate-pdf" ${busy || !blocks.length || !remaining ? 'disabled' : ''}>${icon('languages')}Traduzir ${remaining ? 'textos pendentes' : 'concluído'}</button><button class="button secondary" id="read-pdf">${icon('volume-2')}Ler em PT-BR</button><button class="icon-button" id="pause-reading" aria-label="Pausar ou continuar narração">${icon('pause')}</button><button class="icon-button" id="stop-reading" aria-label="Parar narração">${icon('x')}</button></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local da página"></select></label><label>Velocidade<select data-voice-rate aria-label="Velocidade da narração da página"><option value="0.8">0,8×</option><option value="1">1×</option><option value="1.2">1,2×</option><option value="1.5">1,5×</option></select></label><span class="voice-note">Somente vozes locais PT-BR. Nenhum texto é enviado para narração online.</span></div>${!blocks.length ? '<div class="library-notice">Este PDF não tem uma camada de texto selecionável. As páginas foram preservadas como imagens; OCR de PDFs escaneados ainda não está disponível.</div>' : ''}<div class="reading-pages">${current.pages.map(page => {
+    $('#pdf-reader').innerHTML = `<button class="text-button back-button" id="back-documents">${icon('arrow-left')}Biblioteca de páginas</button><div class="result-links"><span>Veja a tradução:</span><button class="text-button" id="view-pdf-library">Na biblioteca</button>${current.collectionId ? '<button class="text-button" id="view-pdf-project">No projeto</button>' : ''}</div><div class="reader-heading"><div><h2>${esc(current.title)}</h2><p>${current.pages.length} páginas · ${blocks.length - remaining}/${blocks.length} trechos traduzidos</p></div><div class="inline-actions"><button class="icon-button" id="rename-pdf" aria-label="Renomear página">${icon('pencil')}</button><button class="button secondary" id="export-page">${icon('download')}Exportar página HTML</button></div></div><div class="organization-bar" id="pdf-organization">${selectors(current, 'pdf')}</div><div class="source-settings"><label>Idioma original<select id="pdf-source-language">${LANGUAGES.map(([code, label]) => `<option value="${code}" ${(current!.sourceLanguage || 'en') === code ? 'selected' : ''}>${label}</option>`).join('')}</select></label><div class="inline-actions"><button class="button secondary" id="online-pdf" ${!blocks.length ? 'disabled' : ''}>Traduzir texto com Gemini</button><button class="text-button" id="analyze-pdf" ${!blocks.length ? 'disabled' : ''}>Analisar texto com Gemini</button></div>${current.analysis ? `<details class="analysis-panel"><summary>Análise em PT-BR</summary><p class="analysis-copy">${esc(current.analysis)}</p></details>` : ''}</div><div class="reader-controls"><button class="button primary" id="translate-pdf" ${busy || !blocks.length || !remaining ? 'disabled' : ''}>${icon('languages')}Traduzir ${remaining ? 'textos pendentes' : 'concluído'}</button><button class="button secondary" id="read-pdf">${icon('volume-2')}Ler em PT-BR</button><button class="icon-button" id="pause-reading" aria-label="Pausar ou continuar narração">${icon('pause')}</button><button class="icon-button" id="stop-reading" aria-label="Parar narração">${icon('x')}</button></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local da página"></select></label><label>Velocidade<select data-voice-rate aria-label="Velocidade da narração da página"><option value="0.8">0,8×</option><option value="1">1×</option><option value="1.2">1,2×</option><option value="1.5">1,5×</option></select></label><span class="voice-note">Somente vozes locais PT-BR. Nenhum texto é enviado para narração online.</span></div>${!blocks.length ? '<div class="library-notice">Este PDF não tem uma camada de texto selecionável. As páginas foram preservadas como imagens; OCR de PDFs escaneados ainda não está disponível.</div>' : ''}<div class="reading-pages">${current.pages.map(page => {
       const elements = [...page.blocks.map(b => ({ y: b.y, html: `<section class="pdf-block ${b.heading ? 'pdf-heading' : ''} ${b.translated ? '' : 'pending'}" data-pdf-block="${b.id}"><div class="pdf-block-actions"><button class="icon-button" data-read-block="${b.id}" aria-label="Ler trecho em PT-BR">${icon('volume-2')}</button><button class="icon-button" data-edit-block="${b.id}" aria-label="Editar tradução do trecho">${icon('pencil')}</button></div><p class="pdf-copy">${esc(b.translated || b.original)}</p><span class="untranslated" ${b.translated ? 'hidden' : ''}>Texto original · tradução pendente</span><details><summary>Texto original</summary><p>${esc(b.original)}</p></details></section>` })), ...page.images.map(image => ({ y: image.y, html: `<figure class="pdf-figure">${image.blank ? '<details><summary>Elemento visual adicional do PDF</summary>' : ''}<a href="${makeURL(image.blob)}" target="_blank" rel="noopener" aria-label="Abrir imagem original da página ${page.number}"><img src="${makeURL(image.blob)}" width="${image.width}" height="${image.height}" style="width:${image.displayWidth ?? image.width}px" alt="Imagem ${page.images.indexOf(image) + 1} da página ${page.number} do PDF" loading="lazy" /></a>${image.blank ? '</details>' : ''}<figcaption>Imagem do PDF original</figcaption></figure>` }))].sort((a, b) => a.y - b.y);
       return `<article class="reading-page"><div class="page-marker">PÁGINA ${page.number}</div>${elements.map(e => e.html).join('')}<details class="pdf-preview"><summary>Ver página original e elementos gráficos</summary><img src="${makeURL(page.preview)}" alt="Página original ${page.number}" loading="lazy" /></details></article>`;
     }).join('')}</div>`;
@@ -245,7 +284,7 @@ export function createLearningArea(options: Options) {
       if (data.type === 'error') fail(new Error(`A tradução não terminou. Os textos já traduzidos e as imagens continuam disponíveis. Verifique a conexão e a memória do dispositivo. Detalhe: ${data.message}`));
       if (data.type === 'text-complete') {
         pdfWorker?.terminate(); pdfWorker = undefined;
-        await saveQueue; setBusy(false); await refresh(); renderReader(); options.toast('Página traduzida. Você pode revisar os textos e ouvir a narração em PT-BR.');
+        await saveQueue; setBusy(false); await refresh(); renderReader(); if (options.currentView() === 'documents') await openLibraryMaterial(target.id, 'pdf'); options.toast('Página traduzida. Você pode revisar os textos e ouvir a narração em PT-BR.');
       }
     };
     pdfWorker.postMessage({ sourceLanguage: target.sourceLanguage || 'en', blocks: blocks.map(b => ({ id: b.id, text: b.original })), baseURL: new URL(import.meta.env.BASE_URL, location.href).href });
@@ -378,12 +417,18 @@ export function createLearningArea(options: Options) {
       }
       if ((id === 'online-pdf' || id === 'analyze-pdf') && current) {
         const target = current, blocks = target.pages.flatMap(p => p.blocks), items = blocks.map(b => ({ id: b.id, original: b.original }));
-        if (id === 'online-pdf') options.online.translate(items, async values => { options.narrator.stop(); for (const value of values) blocks.find(b => b.id === value.id)!.translated = value.translated; await saveDocument(target); await refresh(); if (current?.id === target.id) renderReader(); });
+        if (id === 'online-pdf') options.online.translate(items, async values => { options.narrator.stop(); for (const value of values) blocks.find(b => b.id === value.id)!.translated = value.translated; await saveDocument(target); await refresh(); if (current?.id === target.id) { renderReader(); if (options.currentView() === 'documents') await openLibraryMaterial(target.id, 'pdf'); } });
         else options.online.analyze(items, async value => { target.analysis = value; await saveDocument(target); await refresh(); if (current?.id === target.id) renderReader(); });
       }
       if (id === 'translate-pdf') translate();
-      if (id === 'back-documents') { options.narrator.stop(); current = undefined; renderReader(); renderDocumentList(); }
-      if (button.dataset.openPdf) await openPdf(button.dataset.openPdf);
+      if (id === 'back-documents') libraryList('pdf');
+      if (id === 'back-library') libraryList(libraryTab);
+      if (button.dataset.libraryTab) libraryList(button.dataset.libraryTab as 'pdf' | 'video');
+      if (id === 'view-pdf-library' && current) await openLibraryMaterial(current.id, 'pdf');
+      if (id === 'view-video-library' && options.currentVideo()) await openLibraryMaterial(options.currentVideo()!.id, 'video');
+      if (id === 'view-pdf-project' && current?.collectionId && guard()) { selectedCollection = current.collectionId; await openMaterial(current.id, 'pdf'); }
+      if (id === 'view-video-project' && options.currentVideo()?.collectionId && guard()) { selectedCollection = options.currentVideo()!.collectionId; await openMaterial(options.currentVideo()!.id, 'video'); }
+      if (button.dataset.openPdf) await openLibraryMaterial(button.dataset.openPdf, 'pdf');
       if (button.dataset.material) await openMaterial(button.dataset.material, button.dataset.kind as 'video' | 'pdf');
       if (button.dataset.deletePdf && guard()) {
         const value = button.dataset.deletePdf;
@@ -416,6 +461,11 @@ export function createLearningArea(options: Options) {
       if (target.id === 'video-subject') await options.assignVideo({ collectionId: options.currentVideo()?.collectionId, subjectId: target.value || undefined });
     } catch { options.toast('Não foi possível salvar a organização do material.'); }
   });
+  $('.library-tabs').addEventListener('keydown', event => {
+    if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+    event.preventDefault(); const kind = event.key === 'Home' ? 'pdf' : event.key === 'End' ? 'video' : libraryTab === 'pdf' ? 'video' : 'pdf';
+    libraryList(kind); $(`#library-tab-${kind}`).focus();
+  });
   $('#pdf-input').addEventListener('change', event => {
     const input = event.target as HTMLInputElement, file = input.files?.[0];
     if (file) { if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') void importPdf(file); else options.toast('Escolha um arquivo PDF.'); }
@@ -424,10 +474,12 @@ export function createLearningArea(options: Options) {
   return {
     get busy() { return busy; },
     get inProject() { return options.currentView() === 'collections' && Boolean(activeMaterial); },
-    prepareView: (view: string) => { if (view !== 'collections') restorePortals(); },
+    prepareView: () => restorePortals(), syncView, openLibraryMaterial, showLibrary: () => libraryList(libraryTab),
+    showProjects: async () => { if (!guard()) return; if (selectedCollection && activeMaterial) await openMaterial(activeMaterial.id, activeMaterial.kind); else options.changeView('collections'); },
+    showVideoResult: async (id: string) => { const video = options.currentVideo(); if (video?.collectionId) { selectedCollection = video.collectionId; await openMaterial(id, 'video'); } else await openLibraryMaterial(id, 'video'); },
     showVideoInProject: async (id: string) => { const video = options.currentVideo(); if (!video?.collectionId) return; selectedCollection = video.collectionId; await openMaterial(id, 'video'); },
     refresh, renderVideoOrganization, updateVoiceControls,
     flush: () => saveQueue,
-    async reset() { await cancel(); options.narrator.stop(); current = undefined; activeMaterial = undefined; selectedCollection = undefined; selectedSubject = '';notesUI.clear();readerUI.clear();$('#collection-content').dataset.projectId='';$('#pdf-reader').dataset.documentId='';renderReader(); await refresh(); },
+    async reset() { await cancel(); options.narrator.stop(); current = undefined; activeMaterial = undefined; libraryMaterial = undefined; libraryTab = 'pdf'; collectionMarkupKey = ''; selectedCollection = undefined; selectedSubject = '';notesUI.clear();readerUI.clear();$('#collection-content').dataset.projectId='';$('#pdf-reader').dataset.documentId='';renderReader(); await refresh(); },
   };
 }

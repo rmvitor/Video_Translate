@@ -26,7 +26,7 @@ Em **Authentication → URL Configuration**:
 - **Redirect URLs:** `https://rmvitor.github.io/Video_Translate/`
 - Para testar localmente, acrescente `http://localhost:5173/` ou o endereço exato usado no desenvolvimento.
 
-Em **Authentication → Providers → Email**, mantenha e-mail/senha e confirmação de e-mail ativos. Configure o mínimo de senha em 12 caracteres para novas contas.
+Em **Authentication → Providers → Email**, mantenha e-mail/senha e confirmação de e-mail ativos. Configure o mínimo de senha em 8 caracteres para novas contas.
 
 Configure o **SMTP** do projeto para enviar confirmação e recuperação aos usuários. O remetente padrão do Supabase é destinado a testes e pode restringir os destinatários/envios. As configurações de SMTP e seus segredos ficam no Supabase.
 
@@ -106,7 +106,7 @@ A biblioteca anterior ao login fica preservada. Ao entrar pela primeira vez, um 
 
 Em **Preferências → Backup local e transferência**:
 
-1. Informe uma senha de pelo menos 12 caracteres e crie o backup.
+1. Informe uma senha de pelo menos 8 caracteres e crie o backup.
 2. O arquivo `.entrelinhas` contém projetos/subassuntos, textos/traduções, análises, progresso, imagens/prévias PDF e, opcionalmente, vídeos já guardados no dispositivo.
 3. Os vídeos apenas abertos na sessão, modelos de IA, sessões Supabase e chaves Gemini ficam fora do arquivo.
 4. Transfira o arquivo localmente, faça login na outra máquina e informe a senha para restaurar.
@@ -152,3 +152,9 @@ O painel permite filtrar solicitações, liberados, bloqueados, expirados e aces
 O registro de pagamentos é **manual**; esta versão não integra gateway, cartão, emissão de cobrança ou renovação automática. A validade de acesso é aplicada no servidor, independentemente do registro de pagamento. As observações comerciais ficam em uma tabela separada, inacessível aos clientes; não aparecem na resposta de autorização nem no backup local de materiais.
 
 **Remover acesso** revoga as sessões e impede novas entradas. Preserva a identidade e o histórico, sem apagar a biblioteca local. O master pode liberar novamente pelo gerenciamento de acesso; as sessões antigas continuam revogadas. A conta master não pode ser removida ou rebaixada por essas ações.
+
+### Senhas a partir da versão 0.6
+
+No [painel de autenticação deste projeto](https://supabase.com/dashboard/project/ntlcwlpvwkvrojodmyze/auth/providers), abra **Email**, defina **Minimum password length** como **8** e salve. O app valida esse mínimo no cadastro e na definição de nova senha; o Supabase também precisa aceitar o mesmo valor. A chave pública não permite alterar essa configuração. `supabase/config.toml` aplica o mínimo no ambiente local da CLI, mas não atualiza o Auth hospedado automaticamente.
+
+Essa alteração não redefine as senhas existentes e não exige nova migração SQL nem republicação da função. O backup local também aceita 8 caracteres e preserva a compatibilidade dos arquivos anteriores.

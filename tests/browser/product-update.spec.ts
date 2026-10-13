@@ -21,10 +21,13 @@ async function record(page:Page,store:string,id:string){return page.evaluate(asy
 test('project navigation moves and orders materials, deletes individual files and deletes projects only from the list',async({page,context})=>{
  await mockAccess(context);await seed(page);
  await expect(page.locator('#new-collection')).not.toBeVisible();await expect(page.locator('[data-delete-collection]')).toHaveCount(0);await expect(page.locator('#pdf-settings')).not.toHaveAttribute('open','');
+ await page.locator('[data-move-material="video1"]').click();await page.locator('#move-subject').selectOption('s2');await page.getByRole('button',{name:'Mover material',exact:true}).click();
+ await expect(page.locator('.outline-topic').filter({has:page.locator('[data-subject="s2"]')}).locator('.outline-material')).toContainText('Vídeo 1');
+ await expect(page.locator('#project-outlet #pdf-reader')).toContainText('Página 1');
  await page.locator('[data-move-material="pdf2"]').click();await page.locator('#move-position').selectOption('0');await page.getByRole('button',{name:'Mover material',exact:true}).click();
  await expect(page.locator('.outline-material').first()).toContainText('Página 2');expect((await record(page,'documents','pdf2')).sortOrder).toBe(0);
  await page.locator('[data-move-material="pdf2"]').click();await page.locator('#move-subject').selectOption('s2');await page.getByRole('button',{name:'Mover material',exact:true}).click();
- await expect(page.locator('.outline-topic').filter({has:page.locator('[data-subject="s2"]')}).locator('.outline-material')).toContainText('Página 2');
+ await expect(page.locator('.outline-topic').filter({has:page.locator('[data-subject="s2"]')}).locator('[data-material="pdf2"]')).toContainText('Página 2');
  await page.locator('[data-move-material="video1"]').click();await page.locator('#move-collection').selectOption('b');await page.locator('#move-subject').selectOption('b1');await page.getByRole('button',{name:'Mover material',exact:true}).click();
  await expect(page.locator('[data-material="video1"]')).toHaveCount(0);expect((await record(page,'projects','video1')).collectionId).toBe('b');
  await page.locator('[data-remove-material="pdf2"]').click();await page.locator('#confirm-delete-material').click();await expect(page.locator('[data-material="pdf2"]')).toHaveCount(0);expect(await record(page,'documents','pdf2')).toBeUndefined();
@@ -44,16 +47,18 @@ test('dark theme covers a short full-height page and the whole sidebar follows t
 
 test('simplified signup sends name and contact as account metadata and keeps the tool locked',async({page,context})=>{
  const fixture=await mockAccess(context,{session:false});await page.goto('./');await expect(page.locator('#signin-form')).toBeVisible();await expect(page.locator('#access-screen')).not.toContainText('O Supabase recebe');
- await page.locator('#toggle-signup').click();await page.locator('#access-email').fill('customer@example.test');await page.locator('#access-password').fill('fictional test password');await page.locator('#access-name').fill('Cliente de teste');await page.locator('#access-contact').fill('+55 11 90000-0000');await page.locator('#auth-submit').click();
+ await page.locator('#toggle-signup').click();await page.locator('#access-email').fill('customer@example.test');await page.locator('#access-password').fill('1234567');await page.locator('#access-name').fill('Cliente de teste');await page.locator('#access-contact').fill('+55 11 90000-0000');await page.locator('#auth-submit').click();
+ expect(fixture.calls.filter(call=>call.path.endsWith('/signup'))).toHaveLength(0);
+ await page.locator('#access-password').fill('12345678');await page.locator('#auth-submit').click();
  await expect(page.locator('#access-status')).toContainText('aprovação do master');await expect(page.locator('#app')).not.toBeVisible();
- const signup=fixture.calls.find(call=>call.path.endsWith('/signup'));expect(signup.body.data).toEqual({display_name:'Cliente de teste',contact:'+55 11 90000-0000'});expect(signup.body.data.role).toBeUndefined();
+ const signup=fixture.calls.find(call=>call.path.endsWith('/signup'));expect(signup.body.password).toBe('12345678');expect(signup.body.data).toEqual({display_name:'Cliente de teste',contact:'+55 11 90000-0000'});expect(signup.body.data.role).toBeUndefined();
 });
 
 test('invited user defines a password before the tool can open',async({page,context})=>{
  const fixture=await mockAccess(context,{session:false});
  const hash=new URLSearchParams({access_token:fixture.session.access_token,refresh_token:fixture.session.refresh_token,expires_in:'3600',token_type:'bearer',type:'invite'});
  await page.goto('./#'+hash);await expect(page.locator('#recovery-form')).toBeVisible();await expect(page.locator('#app')).not.toBeVisible();
- await page.locator('#recovery-password').fill('fictional invited password');await page.getByRole('button',{name:'Salvar nova senha'}).click();await expect(page.locator('#app')).toBeVisible();
+ await page.locator('#recovery-password').fill('12345678');await page.getByRole('button',{name:'Salvar nova senha'}).click();await expect(page.locator('#app')).toBeVisible();
  expect(fixture.calls.some(call=>call.path.endsWith('/user')&&call.method==='PUT')).toBe(true);
 });
 

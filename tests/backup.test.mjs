@@ -21,7 +21,7 @@ test('wrong passwords, corrupted backup and unsafe record ids are rejected befor
  await assert.rejects(()=>readBackup(file,'senha completamente errada'),/Senha incorreta/);
  const bytes=new Uint8Array(await file.arrayBuffer());bytes[bytes.length-1]^=1;await assert.rejects(()=>readBackup(new Blob([bytes]),password),/corrompido/);
  await assert.rejects(()=>createBackup({...snapshot,collections:[{...snapshot.collections[0],id:'" onmouseover="alert(1)'}]},password),/Identificação/);
- await assert.rejects(()=>createBackup(snapshot,'short'),/12 caracteres/);
+ await assert.rejects(()=>createBackup(snapshot,'1234567'),/8 caracteres/);
 });
 test('access uses only public configuration, a bounded server lease and account-only request fields',()=>{
  assert.equal(publicAccessConfig({}),null);
@@ -43,4 +43,11 @@ test('PKCE email-link verifiers cross tabs temporarily while access tokens remai
  first.setItem('auth','private-token');first.setItem('auth-code-verifier','temporary-verifier');
  assert.equal(local.getItem('auth'),null);assert.equal(second.getItem('auth'),null);assert.equal(second.getItem('auth-code-verifier'),'temporary-verifier');
  now=3600001;assert.equal(second.getItem('auth-code-verifier'),null);assert.equal(local.getItem('auth-code-verifier'),null);
+});
+
+test('eight-character backup passwords encrypt and restore existing material',async()=>{
+ const file=await createBackup(snapshot,'12345678');
+ const restored=await readBackup(file,'12345678');
+ assert.equal(restored.documents[0].pages[0].blocks[0].translated,'Bem-vindo');
+ await assert.rejects(()=>readBackup(file,'1234567'),/Senha incorreta/);
 });

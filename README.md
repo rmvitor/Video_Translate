@@ -170,3 +170,9 @@ Os modelos e runtimes têm licenças próprias. FFmpeg core é distribuído sob 
 Para um Supabase já ativo, aplique **somente a segunda migração** e atualize a função conforme [as instruções de atualização](docs/SUPABASE_SETUP.md#atualizar-um-projeto-já-ativo). O app mantém compatibilidade com os controles anteriores até concluir esses passos.
 
 Teste opcional da voz real, com o servidor de testes em execução: `npm run test:voice`. Usa texto público de teste, verifica duas sínteses na mesma sessão e duas em um novo worker offline. Não valida autorização do Supabase hospedado.
+
+### Novidades da versão 0.6
+
+- Biblioteca única com abas **Páginas** e **Vídeos**, leitura e reprodução locais, com navegação por teclado.
+- Crie os materiais em **Páginas PDF** ou **Traduzir vídeo** e use **Veja a tradução: Na biblioteca / No projeto** para acompanhar o resultado.
+- Novas senhas de conta, recuperação e backups aceitam no mínimo **8 caracteres**. Backups anteriores continuam compatíveis. No Supabase hospedado, configure também **Authentication → Providers → Email → Minimum password length** em **8**; o arquivo `supabase/config.toml` não altera esse painel automaticamente.

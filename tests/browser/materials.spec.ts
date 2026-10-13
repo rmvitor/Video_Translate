@@ -100,8 +100,8 @@ test('projects and subjects organize a real PDF, preserving images, revisions an
   await expect(page.locator('#access-screen')).toBeVisible();
   await expect(page.locator('#app')).not.toBeVisible();
   await context.setOffline(false); await page.reload();
-  await page.getByRole('button', { name: 'Páginas PDF', exact: true }).click();
-  await page.getByRole('button', { name: 'Abrir página', exact: true }).click();
+  await page.getByRole('button', { name: 'Minha biblioteca' }).click();
+  await page.getByRole('button', { name: 'Ver tradução', exact: true }).click();
   await expect(page.locator('.reading-page')).toHaveCount(2);
   await expect.poll(() => page.locator('.pdf-figure img').first().evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -147,7 +147,8 @@ test('database upgrade preserves existing videos and text and accepts new study 
   await expect(page.locator('#claim-legacy')).toHaveCount(0);
   await page.getByRole('button', { name: 'Minha biblioteca' }).click();
   await expect(page.locator('.library-card h2')).toHaveText('Meu vídeo anterior');
-  await page.getByRole('button', { name: 'Abrir projeto' }).click();
+  await page.getByRole('tab', { name: 'Vídeos', exact: true }).click();
+  await page.getByRole('button', { name: 'Ver tradução', exact: true }).click();
   await expect(page.locator('.translation')).toHaveText('Bem-vindo');
   await page.getByRole('button', { name: 'Projetos e assuntos', exact: true }).click();
   await page.getByRole('button', { name: 'Criar projeto', exact: true }).click();
@@ -163,4 +164,30 @@ test('natural local voice is available without installed system voices and remot
   await expect(page.locator('[aria-label="Voz local do vídeo"] option')).toHaveCount(1);
   await expect(page.locator('[aria-label="Voz local do vídeo"]')).toHaveValue('entrelinhas:piper:faber');
   await expect(page.locator('[aria-label="Voz local do vídeo"] option')).not.toContainText('Remote');
+});
+
+test('creation opens PDF and session video translations in their library tabs without uploading files',async({page,context})=>{
+  const uploads:string[]=[], sent:any[]=[];context.on('request',request=>{if(request.method()!=='GET'&&!request.url().includes('/auth/v1/')&&!request.url().includes('/functions/v1/')&&!request.url().startsWith('https://generativelanguage.googleapis.com/'))uploads.push(request.url());});
+  await context.route('https://generativelanguage.googleapis.com/**',route=>{const body=route.request().postDataJSON();sent.push(body);const units=JSON.parse(body.contents[0].parts[0].text).units;return route.fulfill({contentType:'application/json',body:JSON.stringify({candidates:[{content:{parts:[{text:JSON.stringify({translations:units.map((unit:any)=>({id:unit.id,translated:'Bem-vindo ao treinamento.'}))})}]}}]})});});
+  await page.goto('./');await page.locator('#video-input').setInputFiles(videoPath);
+  await expect(page.locator('#file-title')).toHaveText('training');
+  const blob=await page.locator('#video').evaluate((v:HTMLVideoElement)=>v.src);
+  await page.locator('#view-video-library').click();
+  await expect(page.locator('#library-outlet #video')).toBeVisible();
+  expect(await page.locator('#video').evaluate((v:HTMLVideoElement)=>v.src)).toBe(blob);
+  await page.getByRole('tab',{name:'Páginas',exact:true}).click();
+  await expect(page.locator('#library-pages-panel')).toBeVisible();
+  await page.getByRole('button',{name:'Selecionar PDF',exact:true}).click();await page.locator('#pdf-input').setInputFiles(pdfPath);
+  await expect(page.locator('#documents-view #pdf-reader')).toBeVisible();
+  await page.locator('#online-pdf').click();await page.locator('#review-gemini-key').fill('fictional-test-key');await page.locator('#online-consent').check();await page.locator('#send-online').click();await expect(page.locator('#apply-online')).toBeVisible();await page.locator('#apply-online').click();
+  await expect(page.locator('#library-outlet #pdf-reader')).toBeVisible();
+  expect(sent).toHaveLength(1);expect(JSON.stringify(sent)).not.toMatch(/inlineData|fileData|Training\.pdf|training\.mp4/);
+  await page.getByRole('button',{name:'Páginas PDF',exact:true}).click();await page.locator('#view-pdf-library').click();
+  await expect(page.locator('#library-outlet .pdf-copy').first()).toHaveText('Bem-vindo ao treinamento.');
+  await expect(page.locator('#library-outlet .reading-page')).toHaveCount(2);
+  expect(await page.locator('#library-outlet .pdf-figure img').count()).toBeGreaterThan(0);
+  await page.getByRole('tab',{name:'Vídeos',exact:true}).click();await page.locator('[data-open]').click();
+  await expect(page.locator('#library-outlet #video')).toBeVisible();
+  expect(await page.locator('#video').evaluate((v:HTMLVideoElement)=>v.src)).toBe(blob);
+  await expect(page.locator('#library-count')).toHaveText('2');expect(uploads).toEqual([]);
 });

@@ -39,7 +39,7 @@ try{
     const db=await new Promise(resolve=>{const request=indexedDB.open('entrelinhas-local:user:00000000-0000-4000-8000-000000000990',2);request.onsuccess=()=>resolve(request.result);});
     await new Promise(resolve=>{const tx=db.transaction('documents','readwrite');tx.objectStore('documents').put({id:'voice-public-sample',title:'Teste público de voz',filename:'voice.pdf',createdAt:1,pages:[{number:1,preview,images:[],blocks:[{id:'public-block',original:'Public voice sample.',translated:'Olá. Este treinamento está em português. Acompanhe cada etapa e organize seus projetos.',y:1,heading:false}]}]});tx.oncomplete=resolve;});db.close();
   });
-  await page.getByRole('button',{name:'Páginas PDF',exact:true}).click();await page.getByRole('button',{name:'Abrir página',exact:true}).click();await page.locator('#read-pdf').click();
+  await page.getByRole('button',{name:'Minha biblioteca'}).click();await page.getByRole('button',{name:'Ver tradução',exact:true}).click();await page.locator('#read-pdf').click();
   await page.waitForFunction(()=>window.__testVoiceAudio?.duration>.3&&!window.__testVoiceAudio.paused,undefined,{timeout:60000});
   await page.locator('#pause-reading').click();if(!await page.evaluate(()=>window.__testVoiceAudio.paused))throw new Error('Natural narration did not pause');
   await page.locator('#pause-reading').click();await page.waitForFunction(()=>!window.__testVoiceAudio.paused);

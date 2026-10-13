@@ -3,7 +3,7 @@ import { validateProject } from './subtitles.mjs';
 import { LANGUAGES } from './preferences.mjs';
 const MAGIC = strToU8('ELBK0001');
 export const MAX_BACKUP_BYTES = 512 * 1024 * 1024;
-const PASSWORD_MIN=12, ITERATIONS=250000;
+const PASSWORD_MIN=8, ITERATIONS=250000;
 const id=value=>{if(typeof value!=='string'||!value||!/^[a-zA-Z0-9_-]{1,100}$/.test(value))throw new Error('Identificação inválida no backup.');return value;};
 const text=(value,max=20000)=>{if(typeof value!=='string'||value.length>max)throw new Error('Texto inválido no backup.');return value;};
 const number=value=>{if(!Number.isFinite(value)||value<0)throw new Error('Número inválido no backup.');return value;};
@@ -11,7 +11,7 @@ const coordinate=value=>{if(!Number.isFinite(value)||Math.abs(value)>1e9)throw n
 const optionalText=(value,max)=>value===undefined?undefined:text(value,max);
 function metadata(value) { return {id:id(value.id),title:text(value.title,250),createdAt:number(value.createdAt),collectionId:value.collectionId?id(value.collectionId):undefined,subjectId:value.subjectId?id(value.subjectId):undefined,sortOrder:value.sortOrder===undefined?undefined:number(value.sortOrder),completedAt:value.completedAt===undefined?undefined:number(value.completedAt),sourceLanguage:LANGUAGES.some(([code])=>code===value.sourceLanguage)?value.sourceLanguage:'en',analysis:optionalText(value.analysis,40000)}; }
 async function keyFor(password,salt) {
-  if(typeof password!=='string'||password.length<PASSWORD_MIN)throw new Error('Use uma senha de backup com pelo menos 12 caracteres.');
+  if(typeof password!=='string'||password.length<PASSWORD_MIN)throw new Error('Use uma senha de backup com pelo menos 8 caracteres.');
   const raw=await crypto.subtle.importKey('raw',strToU8(password),'PBKDF2',false,['deriveKey']);
   return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:ITERATIONS,hash:'SHA-256'},raw,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
 }

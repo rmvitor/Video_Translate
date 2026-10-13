@@ -47,7 +47,8 @@ test('local video, captions, editing, seeking, export, persistence and deletion'
   await page.reload();
   await page.getByRole('button', { name: 'Minha biblioteca' }).click();
   await expect(page.locator('.library-card')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Abrir projeto' }).click();
+  await page.getByRole('tab', { name: 'Vídeos', exact: true }).click();
+  await page.getByRole('button', { name: 'Ver tradução' }).click();
   await expect(page.locator('#video')).toBeVisible();
   await expect(page.locator('.translation').first()).toHaveText('Este é um vídeo de treinamento.');
   await page.getByRole('button', { name: 'Minha biblioteca' }).click();
