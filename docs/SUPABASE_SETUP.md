@@ -1,16 +1,16 @@
 # Ativar usuários no Entrelinhas
 
-Esta entrega está preparada para Supabase, mas ainda precisa de um projeto real. Sem URL e chave pública, o novo build mostra **Acesso em preparação** e não libera a ferramenta. Por isso, a entrega deve ficar na branch de desenvolvimento até concluir a configuração; a versão atual do Pages pode continuar funcionando enquanto isso.
+O aplicativo já está configurado para o projeto `ntlcwlpvwkvrojodmyze`, em `https://ntlcwlpvwkvrojodmyze.supabase.co`. A chave publishable está em `public/access-config.json`; não é necessário criar variáveis no GitHub para usar essa configuração. Antes da ativação, confirme a instalação completa do SQL, publique a função e configure a conta master. A entrega deve ficar na branch de desenvolvimento até validar o acesso; a versão atual do Pages pode continuar funcionando enquanto isso.
 
 ## 1. Criar o projeto
 
-Abra [Supabase](https://supabase.com/dashboard) e crie um projeto. Guarde a senha do banco em seu gerenciador de senhas. Em **Project Settings → API / API Keys**, copie a URL e a chave **publishable** (ou a chave legada **anon**).
+O projeto já foi criado. Abra [seu projeto no Supabase](https://supabase.com/dashboard/project/ntlcwlpvwkvrojodmyze) para concluir os passos seguintes. Guarde a senha do banco em seu gerenciador de senhas. Para trocar de projeto futuramente, obtenha a URL e a chave **publishable** (ou a chave legada **anon**) em **Project Settings → API / API Keys**.
 
 A URL e a chave pública podem ser usadas no aplicativo. A chave **service_role**, chaves **sb_secret**, senha do banco e token pessoal do Supabase nunca entram no código, Pages, backup ou chat. A função recebe sua credencial de servidor no próprio ambiente Supabase.
 
 ## 2. Preparar o banco
 
-No **SQL Editor** do projeto novo, execute o conteúdo completo de [202610130001_access_control.sql](../supabase/migrations/202610130001_access_control.sql).
+No [SQL Editor deste projeto](https://supabase.com/dashboard/project/ntlcwlpvwkvrojodmyze/sql/new), execute o conteúdo completo de [202610130001_access_control.sql](../supabase/migrations/202610130001_access_control.sql). A chave pública usada pelo app não permite instalar esse SQL nem atribuir o master.
 
 O SQL cria somente contas/permissões, sessões e histórico de acesso. As tabelas não contêm vídeos, áudio, PDFs, imagens, traduções, títulos de projetos ou backups. Não é necessário criar buckets de Storage.
 
@@ -36,28 +36,32 @@ Instale/use o CLI oficial e autentique-se diretamente com o Supabase:
 
 ```sh
 npx supabase login
-npx supabase functions deploy access-control --project-ref SEU_PROJECT_REF --no-verify-jwt
+npx supabase functions deploy access-control --project-ref ntlcwlpvwkvrojodmyze --no-verify-jwt
 ```
 
 O `PROJECT_REF` aparece no painel e na URL do projeto. A função valida todo token com `auth.getUser()` e usa o `session_id` do token verificado. `--no-verify-jwt` desativa somente a checagem antiga do gateway, para compatibilidade com as chaves/signaturas atuais; a verificação de autenticação dentro da função continua obrigatória.
 
+Se preferir usar somente o painel, abra [Edge Functions](https://supabase.com/dashboard/project/ntlcwlpvwkvrojodmyze/functions), crie uma função chamada **access-control** pelo editor e substitua o código pelo conteúdo completo de [index.ts](../supabase/functions/access-control/index.ts). Publique a função e desative **Verify JWT** na configuração dela, pelo mesmo motivo descrito acima. As variáveis `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` são fornecidas pelo próprio Supabase; não copie a chave de servidor para o app.
+
 Para incluir o navegador de desenvolvimento nas origens permitidas:
 
 ```sh
-npx supabase secrets set ACCESS_ALLOWED_ORIGINS=https://rmvitor.github.io,http://localhost:5173,http://127.0.0.1:5173 --project-ref SEU_PROJECT_REF
+npx supabase secrets set ACCESS_ALLOWED_ORIGINS=https://rmvitor.github.io,http://localhost:5173,http://127.0.0.1:5173 --project-ref ntlcwlpvwkvrojodmyze
 ```
 
 O padrão permite `https://rmvitor.github.io`. Informe origens, sem caminhos ou barra final. CORS não substitui a autenticação e as regras do banco.
+
+No painel, essa configuração também pode ser criada em **Edge Functions → Secrets**, com o nome `ACCESS_ALLOWED_ORIGINS` e o valor `https://rmvitor.github.io,http://localhost:5173,http://127.0.0.1:5173`. Essa lista de origens é pública.
 
 ## 5. Conectar o aplicativo e definir o master
 
 Para testar antes de publicar:
 
 ```sh
-cp .env.example .env
-# Preencha somente SUPABASE_URL e SUPABASE_PUBLISHABLE_KEY no arquivo local.
 npm run dev
 ```
+
+O arquivo público já configura este projeto. Um `.env` local é opcional para usar outro projeto; nesse caso, preencha os dois valores de `.env.example` juntos.
 
 Cadastre sua conta na tela de login e confirme o e-mail. Ela ficará aguardando aprovação. No **SQL Editor**, execute uma única vez, substituindo pelo seu e-mail confirmado:
 
@@ -71,12 +75,12 @@ Outra opção é criar sua conta diretamente no painel Authentication do Supabas
 
 ## 6. Configurar o Pages e ativar a versão
 
-No GitHub, abra **Settings → Secrets and variables → Actions → Variables** e crie:
+Este projeto já usa `public/access-config.json`. Caso prefira configurar pelo build, no GitHub abra **Settings → Secrets and variables → Actions → Variables** e crie:
 
 - `SUPABASE_URL`: a URL HTTPS do projeto.
 - `SUPABASE_PUBLISHABLE_KEY`: a chave pública publishable/anon.
 
-São configurações públicas, não credenciais administrativas. O build rejeita chaves secretas/service_role e exige os dois valores juntos. Como alternativa, preencha `public/access-config.json` com `url` e `publishableKey`; nunca coloque segredos nesse arquivo.
+São configurações públicas, não credenciais administrativas. O build rejeita chaves secretas/service_role e exige os dois valores juntos. Variáveis do build têm prioridade sobre `public/access-config.json`: remova valores antigos ou mantenha ambos apontando para o projeto correto. Nunca coloque segredos nesse arquivo.
 
 Depois de validar cadastro, confirmação, login master e a função publicada, leve a branch para `main` e execute o workflow **Publicar no GitHub Pages**. O build gera `dist/access-config.json`, ajusta a CSP ao projeto configurado e mantém o ID exclusivo `/Video_Translate/`. Sem configuração válida, a interface permanece bloqueada; não há liberação pública automática.
 

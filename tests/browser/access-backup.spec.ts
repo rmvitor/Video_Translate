@@ -5,9 +5,19 @@ const userFile={name:'local.json',mimeType:'application/json',buffer:Buffer.from
 async function counts(page:Page,name=USER_DB){return page.evaluate(async name=>{const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open(name,2);r.onupgradeneeded=()=>{for(const store of ['projects','documents','collections'])if(!r.result.objectStoreNames.contains(store))r.result.createObjectStore(store,{keyPath:'id'});};r.onsuccess=()=>resolve(r.result);});const result=await Promise.all(['projects','documents','collections'].map(store=>new Promise<number>(resolve=>{const r=db.transaction(store).objectStore(store).count();r.onsuccess=()=>resolve(r.result);})));db.close();return result;},name);}
 
 test('unconfigured deployment fails closed and does not load the local library',async({page})=>{
+ await page.route('**/access-config.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({url:'',publishableKey:''})}));
  const calls:string[]=[];page.on('request',r=>{if(r.method()==='POST')calls.push(r.url());});
  await page.goto('./');await expect(page.getByRole('heading',{name:'Acesso em preparação'})).toBeVisible();await expect(page.locator('#app')).not.toBeVisible();expect(calls).toEqual([]);
  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('configured deployment shows sign-in and restricts its CSP to the configured project',async({page})=>{
+ const config=JSON.parse(readFileSync('dist/access-config.json','utf8'));
+ const remoteRequests:string[]=[];
+ await page.route(`${config.url}/**`,route=>{remoteRequests.push(route.request().url());return route.abort();});
+ await page.goto('./');await expect(page.locator('#signin-form')).toBeVisible();await expect(page.locator('#app')).not.toBeVisible();
+ const policy=await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
+ expect(policy).toContain(config.url);expect(policy).not.toContain('https://*.supabase.co');expect(remoteRequests).toEqual([]);
 });
 
 test('sign-in pending approval, grant and block keep library local and hide master actions',async({page,context})=>{
