@@ -30,6 +30,7 @@ execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=0x202641:s=
 
 async function localVoiceFixture(page: import('@playwright/test').Page) {
   await page.addInitScript(() => {
+    localStorage.setItem('entrelinhas.voice','fixture-local');
     const local = { name: 'Voz local de teste', lang: 'pt-BR', voiceURI: 'fixture-local', localService: true, default: true };
     const remote = { name: 'Voz remota proibida', lang: 'pt-BR', voiceURI: 'fixture-remote', localService: false, default: false };
     const state = { utterances: [] as any[], current: undefined as any, paused: false, canceled: 0 };
@@ -77,7 +78,7 @@ test('projects and subjects organize a real PDF, preserving images, revisions an
   await expect(page.locator('.is-reading')).toHaveCount(1);
   expect(await page.evaluate(() => (window as any).__speech.current.lang)).toBe('pt-BR');
   expect(await page.evaluate(() => (window as any).__speech.current.voice.localService)).toBe(true);
-  await expect(page.locator('[aria-label="Voz local da página"] option')).toHaveCount(1);
+  await expect(page.locator('[aria-label="Voz local da página"] option')).toHaveCount(2);
   await page.locator('#pause-reading').click();
   expect(await page.evaluate(() => (window as any).__speech.paused)).toBe(true);
   await page.locator('#pause-reading').click();
@@ -92,7 +93,7 @@ test('projects and subjects organize a real PDF, preserving images, revisions an
   await page.getByRole('button', { name: 'Projetos e assuntos', exact: true }).click();
   await page.getByRole('button', { name: 'Abrir projeto', exact: true }).click();
   await expect(page.locator('.material-card')).toHaveCount(1);
-  await page.locator('[data-kind="pdf"]').click();
+  await page.locator('[data-material][data-kind="pdf"]').click();
   await expect(page.locator('.pdf-copy').first()).toHaveText('Boas-vindas ao treinamento!');
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });
   await page.reload(); await context.setOffline(true); await page.reload();
@@ -155,12 +156,11 @@ test('database upgrade preserves existing videos and text and accepts new study 
   await expect(page.locator('.collection-header h2')).toHaveText('Novo projeto');
 });
 
-test('narration rejects remote-only voices without muting the video', async ({ page }) => {
+test('natural local voice is available without installed system voices and remote voices stay excluded', async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { getVoices: () => [{ name: 'Remote', lang: 'pt-BR', localService: false }], addEventListener: () => {}, cancel: () => {} } }));
   await page.goto('./');
   await page.locator('#project-input').setInputFiles({ name: 'voice.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ version: 1, title: 'Voice', segments: [{ start: 0, end: 2, original: 'Hello', translated: 'Olá' }] })) });
-  await page.locator('#video-narration').click();
-  await expect(page.locator('#toast')).toContainText('Nenhuma voz local PT-BR');
-  await expect(page.locator('#video-narration')).not.toBeChecked();
-  await expect(page.locator('#mute-original')).not.toBeChecked();
+  await expect(page.locator('[aria-label="Voz local do vídeo"] option')).toHaveCount(1);
+  await expect(page.locator('[aria-label="Voz local do vídeo"]')).toHaveValue('entrelinhas:piper:faber');
+  await expect(page.locator('[aria-label="Voz local do vídeo"] option')).not.toContainText('Remote');
 });

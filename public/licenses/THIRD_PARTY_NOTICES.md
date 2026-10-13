@@ -13,6 +13,10 @@ O build distribui bibliotecas e runtimes instalados pelo npm. Preserve as licen�
 | fflate | 0.8.3 | MIT · https://github.com/101arrowz/fflate |
 | Lucide | 0.468.0 | ISC · https://github.com/lucide-icons/lucide |
 | PDF.js / pdfjs-dist | 5.4.624 | Apache-2.0 · https://github.com/mozilla/pdf.js |
+| @diffusionstudio/piper-wasm | 1.0.0 | Wrapper declarado MIT; fontes/build: https://github.com/diffusion-studio/piper-wasm/tree/69522c832bd52d7c16389e9a8aee568065027689 |
+| Piper phonemizer | conforme runtime acima | MIT · https://github.com/rhasspy/piper-phonemize |
+| eSpeak NG incorporado no phonemizer WASM | conforme runtime acima | GPL-3.0-or-later · fontes: https://github.com/rhasspy/espeak-ng e https://github.com/wide-video/piper-phonemize |
+| Voz neural PT-BR Faber medium | revisão c10ece1aade47bb51c153c893d14e5bf8e5b7117 | Dataset CC0 conforme MODEL_CARD: https://huggingface.co/rhasspy/piper-voices/blob/c10ece1aade47bb51c153c893d14e5bf8e5b7117/pt/pt_BR/faber/medium/MODEL_CARD |
 | whisper-tiny.en (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/whisper-tiny.en |
 | whisper-tiny (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/whisper-tiny |
 | m2m100_418M (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/m2m100_418M · modelo original: https://huggingface.co/facebook/m2m100_418M |

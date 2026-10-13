@@ -5,3 +5,21 @@ html,body{background:var(--body-bg);color:var(--text)}.primary,.subject-bar butt
 :root[data-theme=dark] .sidebar{background:#10121c}:root[data-theme=dark] .error-panel{background:#39262b;color:#ffc2b9;border-color:#643d44}:root[data-theme=dark] .danger{background:#442833;color:#ffd0d5;border-color:#754352}:root[data-theme=dark] .light{background:#eeeafa;color:#2c2943}:root[data-theme=dark] .collection-symbol,:root[data-theme=dark] .material-symbol{color:var(--accent-ink)}
 @media(max-width:850px){.settings-grid{grid-template-columns:1fr}.source-settings{padding:15px}.source-settings label{flex-basis:100%}}
 .sidebar{overflow-y:auto}.breadcrumb strong,.transcript-top h2,.player-info strong{color:var(--text)}.breadcrumb,.eyebrow{color:var(--secondary-text)}#pdf-reader .organization-bar,.reading-page .page-marker{border-color:var(--border)}.project-outline .topic-title:focus-visible,.color-preset:focus-visible{outline-color:var(--accent-ink)}
+
+/* The root also paints below short pages and behind the installed PWA. */
+html:root{background:var(--body-bg);color:var(--text);--sidebar-bg:color-mix(in srgb,var(--accent) 48%,#101827);--sidebar-line:color-mix(in srgb,#fff 18%,var(--sidebar-bg))}
+body,#app{min-height:100dvh;background:var(--body-bg)}
+.app-content{min-height:100dvh;display:flex;flex-direction:column;background:var(--body-bg)}
+.app-content>main{width:100%;flex:1}.topbar{height:54px}.main-footer{margin-top:16px;padding:14px 0}
+:root .sidebar,:root[data-theme=dark] .sidebar{background:var(--sidebar-bg);color:#fff;padding-top:24px}
+.sidebar .brand,.sidebar .account-bar,.sidebar .account-bar button,.sidebar .install-button,.sidebar .nav-item{color:#fff}
+.sidebar .brand small,.sidebar .nav-label,.sidebar .sidebar-footer,.sidebar .sidebar-footer span{color:#ffffffb8}
+.sidebar .nav-item:hover,.sidebar .nav-item.selected{background:color-mix(in srgb,#fff 15%,var(--sidebar-bg));color:#fff}
+.sidebar .nav-count{background:color-mix(in srgb,#fff 14%,var(--sidebar-bg));color:#fff}
+.sidebar .local-card{background:color-mix(in srgb,#fff 8%,var(--sidebar-bg));border-color:var(--sidebar-line)}
+.sidebar .local-card strong,.sidebar .local-card p,.sidebar .local-icon{color:#ffffffde}.sidebar .sidebar-footer{border-color:var(--sidebar-line)}
+:root .secondary:hover,:root .light:hover{background:var(--surface-soft);color:var(--text)}
+:root[data-theme=dark] .light{background:var(--surface-soft);color:var(--text);border:1px solid var(--border)}
+.settings-grid,.project-layout,.reader-heading,.page-heading{min-width:0}
+@media(min-width:701px){main{padding-top:24px}.page-heading{margin-bottom:22px}h1{font-size:30px}.page-heading p{margin-top:7px}}
+@media(max-width:700px){.topbar{height:52px}.main-footer{padding-bottom:18px}}

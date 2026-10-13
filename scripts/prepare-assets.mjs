@@ -1,8 +1,11 @@
-import { mkdir, copyFile, readdir, cp } from 'node:fs/promises';
+import { mkdir, copyFile, readdir, cp, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const target = resolve('public/runtime');
 await mkdir(target, { recursive: true });
+const piper=resolve(target,'piper');await mkdir(piper,{recursive:true});
+for(const name of ['piper_phonemize.data','piper_phonemize.wasm'])await copyFile(resolve('node_modules/@diffusionstudio/piper-wasm/build',name),resolve(piper,name));
+await writeFile(resolve(piper,'piper-phonemize.mjs'),await readFile(resolve('node_modules/@diffusionstudio/piper-wasm/build/piper_phonemize.js'),'utf8')+'\nexport default createPiperPhonemize;\n');
 await mkdir(resolve('public/licenses'), { recursive: true });
 const ort = resolve('node_modules/onnxruntime-web/dist');
 for (const name of await readdir(ort)) {

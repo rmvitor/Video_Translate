@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { textRequest, readTranslationResponse, readAnalysisResponse, GEMINI_ENDPOINT } from '../src/cloud-protocol.mjs';
+import { textRequest, readTranslationResponse, readAnalysisResponse, GEMINI_ENDPOINT,availableTextModels,preferredTextModel,geminiEndpoint,geminiError } from '../src/cloud-protocol.mjs';
 import { normalizePreferences, accentForeground, readableAccent, contrastRatio } from '../src/preferences.mjs';
 
 test('online requests whitelist selected text and omit local files and metadata', () => {
@@ -28,4 +28,15 @@ test('appearance recovers invalid settings and maintains readable custom colors'
     assert.ok(contrastRatio(color, accentForeground(color)) >= 4.5);
     for (const surface of ['#ffffff', '#1c2030']) assert.ok(contrastRatio(readableAccent(color, surface), surface) >= 4.5);
   }
+});
+test('Gemini discovery accepts available text models and rejects injected names and media models',()=>{
+ const models=availableTextModels({models:[
+  {name:'models/gemini-3-flash-preview',displayName:'Flash',supportedGenerationMethods:['generateContent']},
+  {name:'models/gemini-2.5-flash-preview-tts',supportedGenerationMethods:['generateContent']},
+  {name:'models/../../outside',supportedGenerationMethods:['generateContent']},
+  {name:'models/gemini-2.5-pro',supportedGenerationMethods:['countTokens']},
+ ]});
+ assert.deepEqual(models,[{id:'gemini-3-flash-preview',name:'Flash'}]);assert.equal(preferredTextModel(models).id,'gemini-3-flash-preview');
+ assert.equal(new URL(geminiEndpoint(models[0].id)).hostname,'generativelanguage.googleapis.com');
+ assert.throws(()=>geminiEndpoint('https://example.com/steal'));assert.match(geminiError(404),/modelo.*disponível/i);
 });

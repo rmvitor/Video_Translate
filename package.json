@@ -1,6 +1,6 @@
 {
   "name": "video-translate",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,15 +12,19 @@
     "test:e2e": "playwright test",
     "test:ai": "node scripts/validate-ai.mjs",
     "test:pdf": "node scripts/validate-pdf.mjs",
+    "test:voice": "node scripts/validate-voice.mjs",
+    "test:access-edge": "DENO_TLS_CA_STORE=system npx --yes --package=deno@2.6.4 deno test --node-modules-dir=manual --allow-env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,ACCESS_ALLOWED_ORIGINS tests/access-control-edge.test.ts",
     "test:access-db": "node scripts/test-access-db.mjs"
   },
   "dependencies": {
+    "@diffusionstudio/piper-wasm": "1.0.0",
     "@ffmpeg/core": "0.12.10",
     "@ffmpeg/ffmpeg": "0.12.15",
     "@huggingface/transformers": "3.8.1",
     "@supabase/supabase-js": "2.117.3",
     "fflate": "0.8.3",
     "lucide": "0.468.0",
+    "onnxruntime-web": "1.22.0-dev.20250409-89f8206ba4",
     "pdfjs-dist": "5.4.624"
   },
   "devDependencies": {

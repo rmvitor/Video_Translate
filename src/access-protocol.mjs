@@ -18,8 +18,8 @@ export function leaseDeadline(response, now = Date.now()) {
 }
 export function accessPayload(action, values = {}) {
   const fields = {
-    start: [], heartbeat: [], logout: [], list: ['search', 'offset'], history: ['user_id', 'offset'],
-    update: ['user_id', 'status', 'starts_at', 'expires_at', 'session_minutes'], revoke: ['user_id'],
+    start: [], heartbeat: [], logout: [], list: ['search', 'offset', 'status'], history: ['user_id', 'offset'],
+    update: ['user_id', 'status', 'starts_at', 'expires_at', 'session_minutes', 'display_name', 'contact', 'plan_name', 'billing_status', 'amount_cents', 'next_payment_at', 'notes'], revoke: ['user_id'], remove:['user_id'], invite:['email','display_name','contact'],
   }[action];
   if (!Array.isArray(fields)) throw new Error('Ação de acesso inválida.');
   return Object.fromEntries([['action', action], ...fields.filter(field => values[field] !== undefined).map(field => [field, values[field]])]);

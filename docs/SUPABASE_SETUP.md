@@ -12,6 +12,8 @@ A URL e a chave pública podem ser usadas no aplicativo. A chave **service_role*
 
 No [SQL Editor deste projeto](https://supabase.com/dashboard/project/ntlcwlpvwkvrojodmyze/sql/new), execute o conteúdo completo de [202610130001_access_control.sql](../supabase/migrations/202610130001_access_control.sql). A chave pública usada pelo app não permite instalar esse SQL nem atribuir o master.
 
+Em um projeto novo, execute depois [202610130002_commercial_access.sql](../supabase/migrations/202610130002_commercial_access.sql), nessa ordem. Se o projeto já tem usuários e master, use somente [a seção de atualização](#atualizar-um-projeto-já-ativo); não repita a primeira migração ou o bootstrap.
+
 O SQL cria somente contas/permissões, sessões e histórico de acesso. As tabelas não contêm vídeos, áudio, PDFs, imagens, traduções, títulos de projetos ou backups. Não é necessário criar buckets de Storage.
 
 Todas as novas contas começam como **pending**. Permissões não vêm de metadados fornecidos pelo usuário. O navegador pode consultar sua própria situação; não pode editar permissões ou consultar sessões/histórico. Operações administrativas são executadas pela função, com autorização conferida no banco.
@@ -126,3 +128,27 @@ npm run test:access-db
 Os testes de navegador usam o SDK real com um serviço Auth/Edge simulado e contas fictícias. Verificam aprovação, bloqueio/expiração, painel master, preservação da biblioteca, recuperação de senha e transferência de backup. Os testes PostgreSQL executam a migração e as regras reais de permissão/RLS, com uma tabela Auth mínima de teste. A função também foi verificada com o TypeScript do Deno.
 
 Esses testes não substituem a validação do Supabase hospedado. Ainda precisam ser conferidos no projeto real: SMTP/links de e-mail, assinaturas e revogação do Auth, origem CORS, IP entregue pelo gateway e publicação da função.
+
+## Atualizar um projeto já ativo
+
+A versão 0.5 mantém as contas, o master e as sessões da versão anterior. **Não execute a primeira migração nem o bootstrap novamente.** Para habilitar todos os controles novos:
+
+1. No SQL Editor do projeto `ntlcwlpvwkvrojodmyze`, execute somente [202610130002_commercial_access.sql](../supabase/migrations/202610130002_commercial_access.sql). [Abrir SQL sem formatação](https://raw.githubusercontent.com/rmvitor/Video_Translate/main/supabase/migrations/202610130002_commercial_access.sql).
+2. Em Edge Functions → **access-control** → Edit, substitua todo o código de `index.ts` pela [versão atual](../supabase/functions/access-control/index.ts). [Abrir código sem formatação](https://raw.githubusercontent.com/rmvitor/Video_Translate/main/supabase/functions/access-control/index.ts). Clique em **Deploy updates** e aguarde concluir. Mantenha a verificação antiga do gateway desativada; o código valida todo token com Auth.
+3. No app, abra **Gestão de usuários** e clique em **Atualizar**. O aviso de atualização pendente desaparece quando SQL e função estão atualizados.
+
+Enquanto a atualização do backend estiver pendente, login e políticas existentes continuam funcionando; os controles novos ficam indisponíveis com uma orientação no painel. Não é necessário recriar contas nem informar senha/chave administrativa no app.
+
+### Cadastro e convites
+
+A tela inicial tem **Solicitar acesso**, com nome, e-mail, contato e senha. A confirmação de e-mail e a aprovação pelo master continuam obrigatórias. O contato é um dado de cadastro; nenhum título de projeto, arquivo ou texto de treinamento é incluído nessa solicitação.
+
+O master pode **Adicionar usuário** enviando um convite por e-mail. O destinatário abre o link e define sua própria senha. A conta começa pendente e deve ser aprovada no painel. Convites precisam de SMTP funcionando no Supabase; se o e-mail já tem uma conta, gerencie o cadastro existente em vez de criar outro. O master não conhece nem define a senha dos clientes.
+
+### Gestão comercial
+
+O painel permite filtrar solicitações, liberados, bloqueados, expirados e acessos removidos. Há aprovação rápida, presets de liberação por 7/30/90 dias, início/fim, limite de sessão, contato, plano, situação do pagamento, valor, próximo pagamento e observações comerciais internas.
+
+O registro de pagamentos é **manual**; esta versão não integra gateway, cartão, emissão de cobrança ou renovação automática. A validade de acesso é aplicada no servidor, independentemente do registro de pagamento. As observações comerciais ficam em uma tabela separada, inacessível aos clientes; não aparecem na resposta de autorização nem no backup local de materiais.
+
+**Remover acesso** revoga as sessões e impede novas entradas. Preserva a identidade e o histórico, sem apagar a biblioteca local. O master pode liberar novamente pelo gerenciamento de acesso; as sessões antigas continuam revogadas. A conta master não pode ser removida ou rebaixada por essas ações.

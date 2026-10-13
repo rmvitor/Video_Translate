@@ -156,3 +156,17 @@ Na versão 0.4, os testes também verificam autenticação com serviço controla
 - `tests/`: testes unitários e funcionais em Chromium.
 
 Os modelos e runtimes têm licenças próprias. FFmpeg core é distribuído sob GPL; consulte `THIRD_PARTY_NOTICES.md` antes de distribuir o build.
+
+### Novidades da versão 0.5
+
+- Tema escuro em toda a janela e lateral que acompanha a cor escolhida.
+- Lista de projetos separada do acompanhamento; criação/exclusão do projeto na lista inicial.
+- Mover páginas e vídeos entre projetos/subassuntos e escolher sua posição; exclusão individual dentro do projeto.
+- Controles de organização, idioma e voz recolhidos para ampliar a área de leitura/player.
+- Voz neural PT-BR Faber com Piper/ONNX no próprio dispositivo. Use **Preparar voz natural** no painel de opções; o primeiro uso baixa cerca de 64 MB. As vozes locais do sistema continuam disponíveis. Textos não são enviados para síntese de voz.
+- Gemini permite verificar a chave/listar modelos de texto e recuperar um modelo indisponível (HTTP 404) usando o catálogo do provedor. A chave continua só na memória e cada envio de texto exige seleção e autorização.
+- Cadastro simplificado com contato e painel master com convites, aprovação, remoção de acesso e registros comerciais manuais. Projetos e materiais continuam exclusivamente locais.
+
+Para um Supabase já ativo, aplique **somente a segunda migração** e atualize a função conforme [as instruções de atualização](docs/SUPABASE_SETUP.md#atualizar-um-projeto-já-ativo). O app mantém compatibilidade com os controles anteriores até concluir esses passos.
+
+Teste opcional da voz real, com o servidor de testes em execução: `npm run test:voice`. Usa texto público de teste, verifica duas sínteses na mesma sessão e duas em um novo worker offline. Não valida autorização do Supabase hospedado.

@@ -1,14 +1,46 @@
-import { GEMINI_ENDPOINT, textRequest, readTranslationResponse, readAnalysisResponse } from './cloud-protocol.mjs';
+import { GEMINI_ENDPOINT, GEMINI_MODELS_ENDPOINT, geminiEndpoint, availableTextModels, preferredTextModel, geminiError, textRequest, readTranslationResponse, readAnalysisResponse } from './cloud-protocol.mjs';
 export type OnlineText = { id: string; original: string };
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 type Options = { dialog: (html: string) => void; toast: (message: string) => void; isBusy: () => boolean };
 export function createOnlineAssistant(options: Options) {
   let key = '', busy = false, controller: AbortController | undefined;
+  let model = '', automaticModel = '', catalogue: {id:string;name:string}[] = [];
+  let catalogueController:AbortController|undefined;
   const settings = document.querySelector('#online-fields')!;
-  settings.innerHTML = `<p class="settings-status">Google Gemini 2.5 Flash pode traduzir e analisar somente os textos que você selecionar. Vídeos, áudio, PDFs e imagens não são enviados. O uso depende da sua chave e cota do serviço.</p><label class="field-label">Chave Gemini (somente nesta sessão)<input id="settings-gemini-key" type="password" autocomplete="off" spellcheck="false" placeholder="Informe sua chave pessoal" /></label><div class="inline-actions"><button class="button secondary" id="set-session-key">Usar nesta sessão</button><button class="text-button" id="forget-session-key">Esquecer chave</button></div><p class="settings-status" id="key-status">Nenhuma chave carregada.</p><a class="text-button" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Gerenciar chave no Google AI Studio ↗</a>`;
+  settings.innerHTML = `<p class="settings-status">Google Gemini pode traduzir e analisar somente os textos que você selecionar. Vídeos, áudio, PDFs e imagens não são enviados. O uso depende da sua chave e cota do serviço.</p><label class="field-label">Chave Gemini (somente nesta sessão)<input id="settings-gemini-key" type="password" autocomplete="off" spellcheck="false" placeholder="Informe sua chave pessoal" /></label><div class="inline-actions"><button class="button secondary" id="set-session-key">Usar nesta sessão</button><button class="text-button" id="forget-session-key">Esquecer chave</button></div><p class="settings-status" id="key-status">Nenhuma chave carregada.</p><a class="text-button" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Gerenciar chave no Google AI Studio ↗</a>`;
+  settings.insertAdjacentHTML('beforeend', `<label class="field-label">Modelo Gemini<select id="gemini-model"><option value="">Automático</option></select></label><button class="button secondary" id="check-gemini-models">Verificar chave e modelos</button><p class="settings-status" id="gemini-model-status" role="status">A consulta verifica os modelos disponíveis na sua chave, sem enviar textos.</p>`);
   const updateStatus = () => { document.querySelector('#key-status')!.textContent = key ? 'Chave disponível somente na memória desta sessão.' : 'Nenhuma chave carregada.'; };
-  document.querySelector('#set-session-key')!.addEventListener('click', () => { key = (document.querySelector('#settings-gemini-key') as HTMLInputElement).value.trim(); (document.querySelector('#settings-gemini-key') as HTMLInputElement).value = ''; updateStatus(); options.toast(key ? 'Chave carregada apenas nesta sessão.' : 'Informe uma chave Gemini.'); });
-  document.querySelector('#forget-session-key')!.addEventListener('click', () => { key = ''; (document.querySelector('#settings-gemini-key') as HTMLInputElement).value = ''; updateStatus(); });
+  const renderModels = () => {
+    const select = document.querySelector<HTMLSelectElement>('#gemini-model')!;
+    select.innerHTML = `<option value="">Automático</option>${catalogue.map(item=>`<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}`;
+    select.value=model;
+  };
+  const clearModels=()=>{catalogueController?.abort();model='';automaticModel='';catalogue=[];renderModels();document.querySelector('#gemini-model-status')!.textContent='A consulta verifica os modelos disponíveis na sua chave, sem enviar textos.';};
+  async function loadModels(secret:string, signal?:AbortSignal) {
+    const found:{id:string;name:string}[]=[];let page='';
+    for(let count=0;count<5;count++) {
+      const url=new URL(GEMINI_MODELS_ENDPOINT);url.searchParams.set('pageSize','100');if(page)url.searchParams.set('pageToken',page);
+      const response=await fetch(url,{headers:{'X-Goog-Api-Key':secret},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(20000)]):AbortSignal.timeout(20000)});
+      if(!response.ok)throw new Error(geminiError(response.status));
+      const data=await response.json();found.push(...availableTextModels(data));page=typeof data.nextPageToken==='string'?data.nextPageToken:'';if(!page)break;
+    }
+    if(!found.length)throw new Error('Nenhum modelo Gemini de texto disponível nesta chave. Confira o projeto e as permissões no Google AI Studio.');
+    if(key!==secret)throw new DOMException('Consulta cancelada.','AbortError');
+    catalogue=found;automaticModel=preferredTextModel(catalogue)?.id||'';renderModels();return found;
+  }
+  document.querySelector('#gemini-model')!.addEventListener('change',event=>{model=(event.target as HTMLSelectElement).value;});
+  document.querySelector('#check-gemini-models')!.addEventListener('click',async()=>{
+    const input=document.querySelector<HTMLInputElement>('#settings-gemini-key')!,status=document.querySelector('#gemini-model-status')!,button=document.querySelector<HTMLButtonElement>('#check-gemini-models')!;
+    if(input.value.trim()){clearModels();key=input.value.trim();input.value='';updateStatus();}
+    if(!key){status.textContent='Informe a chave Gemini antes de verificar.';return;}
+    if(busy)return;button.disabled=true;status.textContent='Consultando os modelos disponíveis…';
+    const secret=key;catalogueController=new AbortController();
+    try{const found=await loadModels(secret,catalogueController.signal);if(key!==secret)return;status.textContent=`Chave verificada: ${found.length} modelos de texto disponíveis. Automático: ${automaticModel}.`;}
+    catch(err){if(key===secret)status.textContent=err instanceof Error?err.message:'Não foi possível consultar os modelos.';}
+    finally{button.disabled=false;}
+  });
+  document.querySelector('#set-session-key')!.addEventListener('click', () => { clearModels();key = (document.querySelector('#settings-gemini-key') as HTMLInputElement).value.trim(); (document.querySelector('#settings-gemini-key') as HTMLInputElement).value = ''; updateStatus(); options.toast(key ? 'Chave carregada apenas nesta sessão.' : 'Informe uma chave Gemini.'); });
+  document.querySelector('#forget-session-key')!.addEventListener('click', () => { key = ''; clearModels();(document.querySelector('#settings-gemini-key') as HTMLInputElement).value = ''; updateStatus(); });
   document.querySelector('#dialog')!.addEventListener('close', () => controller?.abort());
   function review(items: OnlineText[], kind: 'translate' | 'analyze', apply: (value: { id: string; translated: string }[] | string) => Promise<void>) {
     if (busy || options.isBusy()) { options.toast('Conclua ou cancele o processamento atual primeiro.'); return; }
@@ -25,12 +57,20 @@ export function createOnlineAssistant(options: Options) {
       if (!secret) { error.textContent = 'Informe sua chave pessoal Gemini. Ela não será salva na biblioteca.'; return; }
       let body: ReturnType<typeof textRequest>;
       try { body = textRequest(selected, kind); } catch (err) { error.textContent = err instanceof Error ? err.message : 'Seleção inválida.'; return; }
+      if(key!==secret){model='';automaticModel='';catalogue=[];renderModels();}
       key = secret; updateStatus(); busy = true; controller = new AbortController();
       const cancelSignal = controller.signal;
       const send = document.querySelector<HTMLButtonElement>('#send-online')!; send.disabled = true; send.textContent = 'Consultando o Gemini…';
       try {
-        const response = await fetch(GEMINI_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': secret }, body: JSON.stringify(body), signal: cancelSignal });
-        if (!response.ok) throw new Error(response.status === 429 ? 'Cota ou limite do Gemini atingido. Verifique seu plano e tente depois.' : `O Gemini recusou a solicitação (HTTP ${response.status}). Confira a chave, as permissões e a disponibilidade do serviço.`);
+        const chosen=model||automaticModel;
+        const request=(selected:string)=>fetch(selected?geminiEndpoint(selected):GEMINI_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json','X-Goog-Api-Key':secret},body:JSON.stringify(body),signal:AbortSignal.any([cancelSignal,AbortSignal.timeout(90000)])});
+        let response=await request(chosen);
+        if(response.status===404&&!model){
+          send.textContent='Buscando um modelo disponível…';
+          const available=await loadModels(secret,cancelSignal),fallback=preferredTextModel(available,chosen||'gemini-2.5-flash');
+          if(!fallback)throw new Error(geminiError(404));automaticModel=fallback.id;response=await request(fallback.id);
+        }
+        if (!response.ok) throw new Error(geminiError(response.status));
         const result = await response.json();
         const text = result.candidates?.[0]?.content?.parts?.filter((part: { thought?: boolean; text?: string }) => !part.thought).map((part: { text?: string }) => part.text ?? '').join('');
         if (!text) throw new Error('O Gemini não retornou um texto utilizável. Nenhuma alteração foi aplicada.');
@@ -59,7 +99,7 @@ export function createOnlineAssistant(options: Options) {
   }
   return {
     get busy() { return busy; },
-    reset: () => { key = ''; controller?.abort(); const review = document.querySelector<HTMLInputElement>('#review-gemini-key'); if (review) review.value = ''; updateStatus(); (document.querySelector('#settings-gemini-key') as HTMLInputElement).value = ''; },
+    reset: () => { key = ''; clearModels();controller?.abort(); const review = document.querySelector<HTMLInputElement>('#review-gemini-key'); if (review) review.value = ''; updateStatus(); (document.querySelector('#settings-gemini-key') as HTMLInputElement).value = ''; },
     translate: (items: OnlineText[], apply: (values: { id: string; translated: string }[]) => Promise<void>) => review(items, 'translate', value => apply(value as { id: string; translated: string }[])),
     analyze: (items: OnlineText[], save: (value: string) => Promise<void>) => review(items, 'analyze', value => save(value as string)),
   };

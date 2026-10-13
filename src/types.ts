@@ -11,12 +11,13 @@ export type Project = {
   video?: Blob;
   collectionId?: string;
   subjectId?: string;
+  sortOrder?: number;
   completedAt?: number;
   sourceLanguage?: string;
   analysis?: string;
 };
 
-export type Assignment = { collectionId?: string; subjectId?: string };
+export type Assignment = { collectionId?: string; subjectId?: string; sortOrder?: number };
 export type LearningProject = { id: string; title: string; createdAt: number; subjects: { id: string; title: string }[]; lastMaterialId?: string; notes?: string };
 export type PdfBlock = { id: string; original: string; translated: string; y: number; heading: boolean };
 export type PdfImage = { id: string; blob: Blob; width: number; height: number; y: number; displayWidth?: number; blank?: boolean };

@@ -12,7 +12,7 @@ function apply() {
   document.documentElement.style.setProperty('--accent-ink', readableAccent(preference.color, theme === 'dark' ? '#1c2030' : '#ffffff'));
   document.documentElement.style.setProperty('--purple', preference.color);
   document.documentElement.style.setProperty('--purple-dark', preference.color);
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#10121c' : preference.color);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', preference.color);
 }
 apply(); system.addEventListener('change', apply);
 export function initAppearance() {

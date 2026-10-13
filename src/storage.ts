@@ -36,6 +36,16 @@ export const listDocuments = () => transaction('readonly', store => store.getAll
 export const saveDocument = (value: PdfDocument) => transaction('readwrite', store => store.put(value), 'documents');
 export const deleteDocument = (id: string) => transaction('readwrite', store => store.delete(id), 'documents');
 
+export async function saveMaterials(projects:Project[],documents:PdfDocument[]) {
+  const db=await open();
+  return new Promise<void>((resolve,reject)=>{
+    const tx=db.transaction(['projects','documents'],'readwrite');
+    for(const project of projects)tx.objectStore('projects').put(project);
+    for(const document of documents)tx.objectStore('documents').put(document);
+    tx.oncomplete=()=>{db.close();resolve();};tx.onabort=tx.onerror=()=>{db.close();reject(tx.error);};
+  });
+}
+
 export async function removeLocalData() {
   const db = await open();
   await new Promise<void>((resolve, reject) => {
@@ -46,7 +56,7 @@ export async function removeLocalData() {
   });
   // Model weights live in the Transformers.js cache, separate from the app shell.
   for (const name of await caches.keys()) {
-    if (name === 'transformers-cache') await caches.delete(name);
+    if (name === 'transformers-cache' || name === 'entrelinhas-voice-v1') await caches.delete(name);
   }
 }
 

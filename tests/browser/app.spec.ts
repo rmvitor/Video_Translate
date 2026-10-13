@@ -52,7 +52,7 @@ test('local video, captions, editing, seeking, export, persistence and deletion'
   await expect(page.locator('.translation').first()).toHaveText('Este é um vídeo de treinamento.');
   await page.getByRole('button', { name: 'Minha biblioteca' }).click();
   await page.getByRole('button', { name: 'Excluir training' }).click();
-  await page.getByRole('button', { name: 'Excluir projeto', exact: true }).click();
+  await page.getByRole('button', { name: 'Excluir vídeo', exact: true }).click();
   await expect(page.locator('.library-card')).toHaveCount(0);
   expect(outbound).toEqual([]);
   expect(errors).toEqual([]);

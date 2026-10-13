@@ -67,5 +67,6 @@ export function validateProject(data) {
     completedAt: Number.isFinite(data.completedAt) && data.completedAt > 0 ? data.completedAt : undefined,
     collectionId: typeof data.collectionId === 'string' ? data.collectionId.slice(0, 100) : undefined,
     subjectId: typeof data.subjectId === 'string' ? data.subjectId.slice(0, 100) : undefined,
+    sortOrder: Number.isFinite(data.sortOrder) && data.sortOrder >= 0 ? data.sortOrder : undefined,
   };
 }
