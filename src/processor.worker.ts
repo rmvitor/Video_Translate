@@ -49,10 +49,38 @@ async function audioFromVideo(file: File, baseURL: string): Promise<Float32Array
   }
 }
 
-self.onmessage = async (event: MessageEvent<{ file?: File; segments?: Segment[]; baseURL: string }>) => {
+async function translateUnits(units: { id: string; text: string }[], onResult?: (id: string, translated: string) => void) {
+  status('models', 'Preparando o modelo de tradução para português…');
+  translator ??= await createPipeline('translation', 'Xenova/opus-mt-en-ROMANCE', {
+    device: 'wasm', dtype: 'q8', progress_callback: downloading('Tradução'),
+  }) as Translator;
+  const target = ['>>pt_br<<', '>>pt<<', '>>por<<'].find(token => translator!.tokenizer.model.vocab.includes(token));
+  if (!target) throw new Error('O modelo de tradução não contém um idioma português suportado.');
+  const output: string[] = [];
+  for (const [index, unit] of units.entries()) {
+    status('translate', `Traduzindo trecho ${index + 1} de ${units.length}…`, index / units.length * 100);
+    const words = unit.text.split(/\s+/);
+    const pieces: string[] = [];
+    for (let start = 0; start < words.length; start += 80) {
+      const result = await translator(`${target} ${words.slice(start, start + 80).join(' ')}`, { max_new_tokens: 256 });
+      pieces.push(result[0].translation_text.trim());
+    }
+    const translated = pieces.join(' ');
+    output.push(translated);
+    onResult?.(unit.id, translated);
+  }
+  return output;
+}
+
+self.onmessage = async (event: MessageEvent<{ file?: File; segments?: Segment[]; blocks?: { id: string; text: string }[]; baseURL: string }>) => {
   try {
     // Pass the actual app directory: worker bundles live one directory below it on Pages.
     env.backends.onnx.wasm!.wasmPaths = `${event.data.baseURL}runtime/`;
+    if (event.data.blocks) {
+      await translateUnits(event.data.blocks, (id, translated) => send({ type: 'text-translated', id, translated }));
+      send({ type: 'text-complete' });
+      return;
+    }
     let segments = event.data.segments;
     if (!segments) {
       const audio = await audioFromVideo(event.data.file!, event.data.baseURL);
@@ -74,26 +102,8 @@ self.onmessage = async (event: MessageEvent<{ file?: File; segments?: Segment[];
       if (!segments.length) throw new Error('Não foi possível identificar fala em inglês no áudio. Você pode importar uma legenda SRT ou VTT.');
       send({ type: 'transcribed', segments });
     }
-    status('models', 'Preparando o modelo de tradução para português…');
-    translator ??= await createPipeline('translation', 'Xenova/opus-mt-en-ROMANCE', {
-      device: 'wasm', dtype: 'q8', progress_callback: downloading('Tradução'),
-    }) as Translator;
-    // Select a real token from the downloaded vocabulary rather than assuming a language code.
-    const target = ['>>pt_br<<', '>>pt<<', '>>por<<'].find(token => translator!.tokenizer.model.vocab.includes(token));
-    if (!target) throw new Error('O modelo de tradução não contém um idioma português suportado.');
-    const translated: Segment[] = [];
-    for (const [index, segment] of segments.entries()) {
-      status('translate', `Traduzindo trecho ${index + 1} de ${segments.length}…`, index / segments.length * 100);
-      // Bound token input; long imported captions are translated in smaller pieces.
-      const words = segment.original.split(/\s+/);
-      const pieces: string[] = [];
-      for (let start = 0; start < words.length; start += 80) {
-        const result = await translator(`${target} ${words.slice(start, start + 80).join(' ')}`, { max_new_tokens: 256 });
-        const item = Array.isArray(result) ? result[0] : result;
-        pieces.push(item.translation_text.trim());
-      }
-      translated.push({ ...segment, translated: pieces.join(' ') });
-    }
+    const texts = await translateUnits(segments.map((s, i) => ({ id: String(i), text: s.original })));
+    const translated = segments.map((s, i) => ({ ...s, translated: texts[i] }));
     send({ type: 'complete', segments: translated });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);

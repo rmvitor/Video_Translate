@@ -61,5 +61,7 @@ export function validateProject(data) {
     lastModified: Number.isFinite(data.lastModified) ? data.lastModified : 0,
     duration: Number.isFinite(data.duration) && data.duration >= 0 ? data.duration : 0,
     segments,
+    collectionId: typeof data.collectionId === 'string' ? data.collectionId.slice(0, 100) : undefined,
+    subjectId: typeof data.subjectId === 'string' ? data.subjectId.slice(0, 100) : undefined,
   };
 }

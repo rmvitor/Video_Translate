@@ -1,13 +1,16 @@
 import './style.css';
-import { createIcons, Play, Layers, Languages, ShieldCheck, HardDrive, Download, Upload, Plus, ArrowUpRight, FileVideo, Search, Captions, Check, X, LoaderCircle, ChevronRight, Trash2, FolderOpen, Settings2, Pencil, FileText, MonitorSmartphone, BookOpen, WifiOff, Clock3, CircleHelp, Sparkles, ArrowLeft, Menu } from 'lucide';
-import type { Project, Segment, WorkerEvent } from './types';
+import './learning.css';
+import { createIcons, Play, Layers, Languages, ShieldCheck, HardDrive, Download, Upload, Plus, ArrowUpRight, FileVideo, Search, Captions, Check, X, LoaderCircle, ChevronRight, Trash2, FolderOpen, Settings2, Pencil, FileText, MonitorSmartphone, BookOpen, WifiOff, Clock3, CircleHelp, Sparkles, ArrowLeft, Menu, Volume2, Pause } from 'lucide';
+import type { Project, Segment, WorkerEvent, Assignment } from './types';
+import { createLearningArea } from './learning';
+import { LocalNarrator, VideoNarration } from './narration';
 import { listProjects, saveProject, deleteProject, removeLocalData } from './storage';
 import { activeSegment, formatClock, exportSubtitles, parseSubtitles, validateProject } from './subtitles.mjs';
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const escape = (text: unknown) => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const icon = (name: string, className = '') => `<i data-lucide="${name}" class="${className}" aria-hidden="true"></i>`;
-const icons = () => createIcons({ icons: { Play, Layers, Languages, ShieldCheck, HardDrive, Download, Upload, Plus, ArrowUpRight, FileVideo, Search, Captions, Check, X, LoaderCircle, ChevronRight, Trash2, FolderOpen, Settings2, Pencil, FileText, MonitorSmartphone, BookOpen, WifiOff, Clock3, CircleHelp, Sparkles, ArrowLeft, Menu } });
+const icons = () => createIcons({ icons: { Play, Layers, Languages, ShieldCheck, HardDrive, Download, Upload, Plus, ArrowUpRight, FileVideo, Search, Captions, Check, X, LoaderCircle, ChevronRight, Trash2, FolderOpen, Settings2, Pencil, FileText, MonitorSmartphone, BookOpen, WifiOff, Clock3, CircleHelp, Sparkles, ArrowLeft, Menu, Volume2, Pause } });
 const megabytes = (size: number) => `${(size / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB`;
 const appURL = new URL(import.meta.env.BASE_URL, location.href);
 
@@ -25,21 +28,26 @@ let installPrompt: (Event & { prompt: () => Promise<void>; userChoice: Promise<{
 let attachToProject = false;
 let storageAvailable = true;
 let toastTimer: ReturnType<typeof setTimeout>;
+let learning: ReturnType<typeof createLearningArea>;
+let pendingOrganization: Assignment | undefined;
+const narrator = new LocalNarrator();
 
 $('#app').innerHTML = `
   <div id="menu-backdrop" class="menu-backdrop" hidden></div>
   <aside class="sidebar" id="sidebar">
-    <a class="brand" href="./" aria-label="Entrelinhas, início"><span class="brand-mark">${icon('play')}</span><span>entrelinhas<span class="brand-dot">.</span><small>VÍDEOS NO SEU IDIOMA</small></span></a>
+    <a class="brand" href="./" aria-label="Entrelinhas, início"><span class="brand-mark">${icon('play')}</span><span>entrelinhas<span class="brand-dot">.</span><small>VÍDEOS E PÁGINAS EM PT-BR</small></span></a>
     <div class="nav-label">SEU ESPAÇO</div>
     <nav aria-label="Navegação principal">
       <button class="nav-item selected" data-view="workspace">${icon('languages')}<span>Traduzir vídeo</span><span class="nav-arrow">${icon('chevron-right')}</span></button>
+      <button class="nav-item" data-view="documents">${icon('file-text')}<span>Páginas PDF</span></button>
+      <button class="nav-item" data-view="collections">${icon('folder-open')}<span>Projetos e assuntos</span></button>
       <button class="nav-item" data-view="library">${icon('layers')}<span>Minha biblioteca</span><span id="library-count" class="nav-count">0</span></button>
       <button class="nav-item" data-view="privacy">${icon('shield-check')}<span>Privacidade</span></button>
     </nav>
     <div class="sidebar-bottom">
       <div class="local-card"><span class="local-icon">${icon('hard-drive')}</span><strong>Seu dispositivo. Seu conteúdo.</strong><p>Os vídeos ficam com você.<br>A tradução acontece aqui.</p><span class="local-indicator"><span></span> Processamento local</span></div>
       <button class="install-button" id="install">${icon('monitor-smartphone')}<span>Instalar aplicativo</span>${icon('arrow-up-right')}</button>
-      <div class="sidebar-footer">Feito para aprender, sem barreiras.<span>v0.1 · PWA</span></div>
+      <div class="sidebar-footer">Feito para aprender, sem barreiras.<span>v0.2 · PWA</span></div>
     </div>
   </aside>
   <div class="app-content">
@@ -58,6 +66,7 @@ $('#app').innerHTML = `
             </div>
             <div class="player-info"><div><strong id="file-title">Seu próximo treinamento</strong><span id="file-detail">Adicione um vídeo para começar</span></div><span class="language-route">EN ${icon('arrow-up-right')} PT-BR</span></div>
             <div class="player-toolbar"><label class="checkbox-label"><input type="checkbox" id="remember" /><span>Guardar vídeo neste dispositivo</span><button class="icon-button" data-action="storage-help" aria-label="Como funciona o armazenamento local">${icon('circle-help')}</button></label><label class="caption-select">${icon('captions')}<select id="caption-language" aria-label="Idioma das legendas"><option value="translated">Português</option><option value="original">Inglês</option><option value="both">Os dois idiomas</option><option value="off">Sem legenda</option></select></label></div>
+            <div class="narration-panel"><div class="narration-toggles"><label><input type="checkbox" id="video-narration" />${icon('volume-2')}Narrar em PT-BR</label><label><input type="checkbox" id="mute-original" />Silenciar áudio original</label></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local do vídeo"></select></label><label>Velocidade<select data-voice-rate aria-label="Velocidade da narração do vídeo"><option value="0.8">0,8×</option><option value="1">1×</option><option value="1.2">1,2×</option><option value="1.5">1,5×</option></select></label></div><p id="narration-status" aria-live="polite">A narração usa uma voz local PT-BR instalada no dispositivo.</p></div>
             <div class="process-area"><div class="process-copy"><span class="sparkle-icon">${icon('sparkles')}</span><div><strong id="process-title">Traduza sem sair daqui</strong><p id="process-description">A IA roda no navegador. Nenhuma chave de API necessária.</p></div></div><button class="button primary" id="process" disabled>${icon('languages')}Transcrever e traduzir</button></div>
             <div class="progress-area" id="progress-area" hidden aria-live="polite"><div class="progress-top"><span>${icon('loader-circle', 'spin')}<strong id="progress-message">Preparando…</strong></span><button class="text-button" id="cancel">Cancelar</button></div><div class="progress-track"><div id="progress-bar"></div></div><p>O processamento é local. Mantenha esta tela aberta; o primeiro uso baixa os modelos de IA.</p></div>
             <div class="error-panel" id="error-panel" hidden role="alert"><strong>Não foi possível concluir</strong><p id="error-message"></p><details><summary>Detalhes técnicos</summary><pre id="error-detail"></pre></details></div>
@@ -74,7 +83,7 @@ $('#app').innerHTML = `
         <div class="model-note">${icon('download')}No primeiro uso, os modelos de IA são baixados (centenas de MB). Depois, os modelos completos em cache podem funcionar offline. A tradução automática pode precisar de revisão.</div>
       </section>
       <section id="library-view" hidden><div class="page-heading"><div><div class="eyebrow">APRENDIZADO QUE FICA</div><h1>Minha biblioteca<span>.</span></h1><p>Projetos guardados apenas neste navegador e dispositivo.</p></div><button class="button secondary" id="import-project">${icon('upload')}Importar projeto</button></div><div class="library-notice">${icon('hard-drive')}Vídeos só são guardados quando você ativa essa opção. Exporte os projetos como backup: limpar os dados do navegador pode apagar sua biblioteca.</div><div id="library-grid" class="library-grid"></div></section>
-      <section id="privacy-view" hidden><div class="page-heading"><div><div class="eyebrow">VOCÊ TEM O CONTROLE</div><h1>Privado por natureza<span>.</span></h1><p>Uma ferramenta pública. Seus treinamentos continuam privados.</p></div></div><div class="privacy-grid"><article class="info-card">${icon('shield-check')}<h2>O arquivo fica com você</h2><p>Vídeo, áudio, transcrição e tradução são processados no navegador. Não usamos serviços de transcrição ou tradução remotos, contas, analytics ou uploads.</p><p>O site e os modelos de IA precisam ser baixados pela internet no primeiro uso. Esses pedidos de download não contêm o conteúdo do seu vídeo.</p></article><article class="info-card">${icon('hard-drive')}<h2>Biblioteca local, sem nuvem</h2><p>Os textos ficam no IndexedDB deste navegador. Por padrão, o vídeo só fica na memória da sessão. Ative “Guardar vídeo neste dispositivo” para também manter uma cópia local.</p><p>Os dados não são criptografados pelo aplicativo. Outras pessoas com acesso a este perfil do navegador podem abrir a biblioteca. Use um dispositivo e perfil confiáveis.</p></article><article class="info-card">${icon('wifi-off')}<h2>Preparado para ficar offline</h2><p>O aplicativo instalado guarda a interface. Os modelos completos baixados são armazenados em cache. Antes de depender do modo offline, conclua um processamento online e teste novamente sem conexão.</p><p>Celulares com pouca memória podem não conseguir executar os modelos. Você pode importar legendas ou projetos produzidos em outro dispositivo.</p></article><article class="info-card">${icon('settings-2')}<h2>Seus dados, suas escolhas</h2><p>Exporte os textos e legendas pela área de tradução. Exporte um projeto JSON para manter os dois idiomas e os tempos (o JSON não inclui o vídeo).</p><p id="storage-estimate">Consultando armazenamento…</p><button class="button danger" id="clear-data">${icon('trash-2')}Apagar biblioteca e modelos locais</button></article></div></section>
+      <section id="privacy-view" hidden><div class="page-heading"><div><div class="eyebrow">VOCÊ TEM O CONTROLE</div><h1>Privado por natureza<span>.</span></h1><p>Uma ferramenta pública. Seus treinamentos continuam privados.</p></div></div><div class="privacy-grid"><article class="info-card">${icon('shield-check')}<h2>O arquivo fica com você</h2><p>Vídeos, PDFs, imagens, transcrições e traduções são processados no navegador. A narração usa somente vozes PT-BR que o navegador identifica como locais. Não usamos serviços de transcrição ou tradução remotos, contas, analytics ou uploads.</p><p>O site e os modelos de IA precisam ser baixados pela internet no primeiro uso. Esses pedidos de download não contêm o conteúdo do seu vídeo.</p></article><article class="info-card">${icon('hard-drive')}<h2>Biblioteca local, sem nuvem</h2><p>Os textos, projetos de estudo e imagens das páginas PDF ficam no IndexedDB deste navegador. Por padrão, o vídeo só fica na memória da sessão. Ative “Guardar vídeo neste dispositivo” para também manter uma cópia local.</p><p>Os dados não são criptografados pelo aplicativo. Outras pessoas com acesso a este perfil do navegador podem abrir a biblioteca. Use um dispositivo e perfil confiáveis.</p></article><article class="info-card">${icon('wifi-off')}<h2>Preparado para ficar offline</h2><p>O aplicativo instalado guarda a interface. Os modelos completos baixados são armazenados em cache. Antes de depender do modo offline, conclua um processamento online e teste novamente sem conexão.</p><p>Celulares com pouca memória podem não conseguir executar os modelos. Você pode importar legendas ou projetos produzidos em outro dispositivo.</p></article><article class="info-card">${icon('settings-2')}<h2>Seus dados, suas escolhas</h2><p>Exporte textos e legendas pela área de tradução e páginas PDF em HTML com imagens incorporadas. Exporte um projeto JSON para manter os dois idiomas e os tempos (o JSON não inclui o vídeo).</p><p id="storage-estimate">Consultando armazenamento…</p><button class="button danger" id="clear-data">${icon('trash-2')}Apagar biblioteca e modelos locais</button></article></div></section>
     </main>
     <footer class="main-footer"><span>entrelinhas<span class="brand-dot">.</span></span><span>Mais compreensão. Menos barreiras.</span><button class="text-button" data-view="privacy">Sobre a privacidade ${icon('arrow-up-right')}</button></footer>
   </div>
@@ -85,6 +94,22 @@ $('#app').innerHTML = `
   <div id="toast" class="toast" hidden role="status"></div>
 `;
 icons();
+const videoNarration = new VideoNarration($<HTMLVideoElement>('#video'), narrator, () => project?.segments ?? [], message => {
+  $('#narration-status').textContent = message;
+  $<HTMLInputElement>('#video-narration').checked = videoNarration.enabled;
+}, $<HTMLInputElement>('#mute-original'));
+learning = createLearningArea({
+  toast, icons, dialog, changeView, narrator, isBusy: () => processing,
+  stopMedia: () => { videoNarration.disable(); $<HTMLVideoElement>('#video').pause(); },
+  openVideo: openProject, currentVideo: () => project,
+  addVideo: value => { pendingOrganization = value; attachToProject = false; $<HTMLInputElement>('#video-input').click(); },
+  assignVideo: async value => { if (project) { Object.assign(project, value); await persist(); updateProjectUI(); } },
+});
+$('#video-narration').addEventListener('change', () => {
+  try {
+    if ($<HTMLInputElement>('#video-narration').checked) videoNarration.enable(); else videoNarration.disable();
+  } catch (error) { $<HTMLInputElement>('#video-narration').checked = false; toast(error instanceof Error ? error.message : 'Não foi possível narrar.'); }
+});
 
 function toast(message: string) {
   $('#toast').textContent = message;
@@ -102,14 +127,17 @@ function dialog(content: string) {
 
 function changeView(view: string) {
   currentView = view;
-  for (const name of ['workspace', 'library', 'privacy']) $(`#${name}-view`).hidden = name !== view;
+  for (const name of ['workspace', 'library', 'privacy', 'documents', 'collections']) $(`#${name}-view`).hidden = name !== view;
+  if (view !== 'workspace') { videoNarration.disable(); $<HTMLVideoElement>('#video').pause(); }
+  if (view !== 'documents') { narrator.stop(); document.querySelectorAll('.is-reading').forEach(el => el.classList.remove('is-reading')); }
   document.querySelectorAll('[data-view]').forEach(el => el.classList.toggle('selected', el.getAttribute('data-view') === view));
-  $('#breadcrumb-label').textContent = ({ workspace: 'Traduzir vídeo', library: 'Minha biblioteca', privacy: 'Privacidade' })[view] ?? '';
+  $('#breadcrumb-label').textContent = ({ workspace: 'Traduzir vídeo', library: 'Minha biblioteca', privacy: 'Privacidade', documents: 'Páginas PDF', collections: 'Projetos e assuntos' })[view] ?? '';
   $('#sidebar').classList.remove('menu-open');
   $('#menu-backdrop').hidden = true;
   $('#menu').setAttribute('aria-expanded', 'false');
   if (view === 'library') renderLibrary();
   if (view === 'privacy') void storageEstimate();
+  if (view === 'documents' || view === 'collections') void learning.refresh();
 }
 
 async function refreshLibrary() {
@@ -131,7 +159,7 @@ function renderLibrary() {
 
 async function persist() {
   if (!project || !storageAvailable) return;
-  try { await saveProject(project); await refreshLibrary(); }
+  try { await saveProject(project); await refreshLibrary(); await learning?.refresh(); }
   catch (error) {
     const quota = error instanceof DOMException && error.name === 'QuotaExceededError';
     toast(quota ? 'Sem espaço para salvar. Exporte o projeto e libere armazenamento local.' : 'Não foi possível salvar neste navegador. Exporte seu projeto para preservar os textos.');
@@ -140,6 +168,7 @@ async function persist() {
 }
 
 function clearVideo() {
+  videoNarration.disable();
   const video = $<HTMLVideoElement>('#video');
   video.pause();
   video.removeAttribute('src');
@@ -177,6 +206,8 @@ function updateProjectUI() {
   $('#progress-area').hidden = !processing;
   $('#import-captions').toggleAttribute('disabled', processing);
   icons();
+  learning?.renderVideoOrganization();
+  $<HTMLInputElement>('#video-narration').disabled = processing || !project?.segments.some(s => s.translated.trim());
 }
 
 function renderTranscript() {
@@ -220,7 +251,7 @@ function cancelProcessing(silent = false) {
 }
 
 async function chooseVideo(file: File) {
-  if (processing) { toast('Cancele o processamento atual antes de trocar de vídeo.'); return; }
+  if (processing || learning.busy) { toast('Cancele o processamento atual antes de trocar de vídeo.'); return; }
   if (file.size > 500 * 1024 * 1024) { toast('Escolha um vídeo de até 500 MB.'); return; }
   if (!file.type.startsWith('video/') && !/\.(mp4|mov|webm|mkv)$/i.test(file.name)) { toast('Escolha um arquivo de vídeo MP4, WebM, MOV ou MKV.'); return; }
   if (attachToProject && project && ((project.filename && file.name !== project.filename) || (project.size && file.size !== project.size))) {
@@ -254,6 +285,8 @@ async function chooseVideo(file: File) {
     } else {
       project = { ...project!, filename: file.name, size: file.size, lastModified: file.lastModified, duration: video.duration };
     }
+    if (pendingOrganization && !attaching) Object.assign(project!, pendingOrganization);
+    pendingOrganization = undefined;
     active = -1;
     $<HTMLInputElement>('#search').value = '';
     $('#error-panel').hidden = true;
@@ -271,9 +304,11 @@ async function chooseVideo(file: File) {
 }
 
 function startProcessing() {
+  if (learning.busy) { toast('Conclua ou cancele o processamento do PDF primeiro.'); return; }
   if (processing || !project || (!currentFile && !project.segments.length)) return;
   if (!window.Worker || !window.WebAssembly) { toast('Este navegador não suporta o processamento local. Use uma versão atual do Chrome, Edge, Firefox ou Safari.'); return; }
   processing = true;
+  videoNarration.disable(); narrator.stop();
   const targetID = project.id;
   $('#error-panel').hidden = true;
   $('#progress-bar').style.width = '4%';
@@ -312,7 +347,7 @@ function startProcessing() {
 }
 
 async function openProject(id: string) {
-  if (processing) { toast('Cancele o processamento antes de abrir outro projeto.'); return; }
+  if (processing || learning.busy) { toast('Cancele o processamento antes de abrir outro projeto.'); return; }
   const selected = projects.find(p => p.id === id);
   if (!selected) return;
   project = selected;
@@ -370,6 +405,7 @@ document.addEventListener('click', async event => {
   if (target.dataset.view) changeView(target.dataset.view);
   if (action === 'choose-video') {
     attachToProject = false;
+    pendingOrganization = undefined;
     $<HTMLInputElement>('#video-input').click();
   }
   if (action === 'close-dialog') $<HTMLDialogElement>('#dialog').close();
@@ -420,7 +456,7 @@ $('#dropzone').addEventListener('dragleave', () => $('#dropzone').classList.remo
 $('#dropzone').addEventListener('drop', event => {
   event.preventDefault(); $('#dropzone').classList.remove('dragging');
   const file = (event as DragEvent).dataTransfer?.files[0];
-  if (file) { attachToProject = false; void chooseVideo(file); }
+  if (file) { attachToProject = false; pendingOrganization = undefined; void chooseVideo(file); }
 });
 // Avoid accidental browser navigation when a file is dropped outside the player.
 window.addEventListener('dragover', event => event.preventDefault());
@@ -516,11 +552,12 @@ $<HTMLInputElement>('#project-input').addEventListener('change', async event => 
 });
 
 $('#clear-data').addEventListener('click', () => {
-  if (processing) { toast('Cancele o processamento antes de apagar os dados.'); return; }
-  dialog(`<h2>Apagar os dados locais?</h2><p>Isso remove todos os projetos, vídeos guardados e modelos de IA deste navegador. O aplicativo continua instalado. Você precisará baixar os modelos novamente.</p><p>Exporte seus projetos antes. Esta ação não pode ser desfeita.</p><button class="button danger" id="confirm-clear">${icon('trash-2')}Apagar dados locais</button>`);
+  if (processing || learning.busy) { toast('Cancele o processamento antes de apagar os dados.'); return; }
+  dialog(`<h2>Apagar os dados locais?</h2><p>Isso remove todos os projetos, vídeos guardados, páginas PDF com suas imagens e modelos de IA deste navegador. O aplicativo continua instalado. Você precisará baixar os modelos novamente.</p><p>Exporte seus projetos antes. Esta ação não pode ser desfeita.</p><button class="button danger" id="confirm-clear">${icon('trash-2')}Apagar dados locais</button>`);
   $('#confirm-clear').addEventListener('click', async () => {
     try {
-      cancelProcessing(true); await removeLocalData();
+      cancelProcessing(true); await learning.flush(); await removeLocalData();
+      await learning.reset(); narrator.stop();
       project = undefined; currentFile = undefined; clearVideo();
       $('#video').hidden = true; $('#reattach').hidden = true; $('#player-empty').hidden = false;
       $('#error-panel').hidden = true;
@@ -550,7 +587,8 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 }
 window.addEventListener('offline', () => toast('Você está offline. Vídeos locais continuam disponíveis; a IA precisa dos modelos completos em cache.'));
 window.addEventListener('beforeunload', event => {
-  if (processing) { event.preventDefault(); }
+  if (processing || learning.busy) { event.preventDefault(); }
 });
 updateProjectUI();
 void refreshLibrary();
+void learning.refresh();

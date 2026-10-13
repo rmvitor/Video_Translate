@@ -1,4 +1,4 @@
-import { mkdir, copyFile, readdir } from 'node:fs/promises';
+import { mkdir, copyFile, readdir, cp } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const target = resolve('public/runtime');
@@ -13,9 +13,13 @@ for (const name of await readdir(ort)) {
 for (const name of ['ffmpeg-core.js', 'ffmpeg-core.wasm']) {
   await copyFile(resolve('node_modules/@ffmpeg/core/dist/esm', name), resolve(target, name));
 }
+for (const directory of ['cmaps', 'standard_fonts', 'wasm']) {
+  await cp(resolve('node_modules/pdfjs-dist', directory), resolve(target, 'pdf', directory), { recursive: true });
+}
 for (const [source, name] of [
   ['node_modules/@huggingface/transformers/LICENSE', 'Transformers-Apache-2.0.txt'],
   ['node_modules/lucide/LICENSE', 'Lucide-ISC.txt'],
+  ['node_modules/pdfjs-dist/LICENSE', 'PDFjs-Apache-2.0.txt'],
   ['THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES.md'],
 ]) {
   await copyFile(resolve(source), resolve('public/licenses', name));

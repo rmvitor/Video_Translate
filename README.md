@@ -1,6 +1,6 @@
 # Entrelinhas
 
-PWA para assistir a treinamentos em inglês com transcrição e tradução para português sincronizadas. O site é estático e pode ser publicado no GitHub Pages; vídeo, áudio e textos são processados no dispositivo.
+PWA para estudar vídeos e PDFs em inglês com tradução para português, imagens preservadas, projetos/subassuntos e narração local em PT-BR. O site é estático e pode ser publicado no GitHub Pages; arquivos e textos são processados no dispositivo.
 
 ## Desenvolvimento
 
@@ -32,11 +32,29 @@ npm run preview
 
 A tradução automática pode conter erros e o modelo multilíngue pode produzir termos de português europeu. A ferramenta prefere o token de português brasileiro quando presente no vocabulário do modelo, e permite revisão manual para adequar o texto a PT-BR. Não considere a transcrição uma reprodução exata do treinamento sem revisão, especialmente em termos técnicos.
 
+## Projetos, subassuntos e páginas PDF
+
+Em **Projetos e assuntos**, crie um projeto com título e seus subassuntos. Abra um assunto e use **Adicionar PDF** ou **Adicionar vídeo** para associar o material diretamente. Os seletores de projeto e subassunto no player/leitor também permitem organizar materiais existentes. Renomear ou remover uma organização preserva seus PDFs e vídeos nas bibliotecas.
+
+Em **Páginas PDF**, adicione um PDF com texto selecionável (até 50 MB e 100 páginas). PDF.js lê os parágrafos e imagens localmente. Clique em **Traduzir textos pendentes** para gerar o português com o mesmo modelo local utilizado nos vídeos. Traduções concluídas são guardadas progressivamente; após uma interrupção, o botão retoma os trechos pendentes.
+
+Cada página apresenta os textos e imagens na ordem aproximada de leitura. As imagens mantêm proporções próximas às do PDF e podem ser abertas em tamanho original. Elementos totalmente vazios ficam recolhidos. A opção **Ver página original e elementos gráficos** preserva a composição completa, inclusive gráficos vetoriais que não puderam ser separados. O leitor produz uma página de estudo, sem prometer uma reprodução exata do layout editorial do PDF.
+
+Revise um parágrafo pelo botão de edição. **Exportar página HTML** gera um arquivo autônomo com os textos e imagens incorporados, que pode ser aberto sem internet. Esse arquivo contém conteúdo interno: guarde-o em um local apropriado e não o envie ao GitHub. O PDF original não é armazenado nem enviado; os textos e imagens extraídos ficam no IndexedDB local para acesso posterior. PDFs escaneados sem camada de texto mantêm as imagens, mas OCR não está incluído nesta versão.
+
+## Narração em PT-BR
+
+No vídeo, ative **Narrar em PT-BR** depois de gerar as traduções. O áudio original é silenciado automaticamente; o controle **Silenciar áudio original** também pode ser usado separadamente. A narração acompanha os trechos traduzidos, pausa com o player e se reposiciona após mudanças de tempo. Quando uma fala demora mais que seu trecho, o vídeo aguarda a leitura e depois retoma, para evitar cortar palavras. Ao desligar a narração, o estado de áudio anterior é restaurado, salvo se você alterou manualmente o controle de silenciamento.
+
+Nas páginas PDF, **Ler em PT-BR** lê os trechos traduzidos e destaca o parágrafo atual. Também é possível ler um trecho individual, pausar, continuar e parar. Os controles de voz e velocidade se aplicam à leitura.
+
+São aceitas somente vozes que o navegador informa como **locais** e com idioma **pt-BR**. Vozes remotas são excluídas para evitar enviar os textos internos a serviços de fala. Se não aparecer uma voz, instale Português (Brasil) nas configurações de fala/idiomas do sistema e reabra o navegador. A disponibilidade varia conforme sistema e navegador; o app não usa uma voz online como substituta automática.
+
 ## Privacidade e armazenamento
 
 - O app não tem servidor de upload, analytics ou credenciais. Os vídeos são reproduzidos com URLs `blob:`. Vídeo e áudio não são enviados para serviços de IA.
 - A interface e os runtimes são servidos pelo Pages. Os modelos de `Xenova/whisper-tiny.en` e `Xenova/opus-mt-en-ROMANCE` são baixados do Hugging Face via HTTPS. Esses downloads são requisições GET sem o conteúdo do vídeo. O provedor de download pode observar os metadados usuais de conexão, como IP e modelo solicitado.
-- As transcrições e traduções são salvas no IndexedDB deste navegador, inclusive se a tradução falhar depois da transcrição. O vídeo fica apenas na sessão por padrão; a cópia persistente exige ativar a opção na tela.
+- As transcrições, traduções, projetos, subassuntos e imagens das páginas PDF são salvos no IndexedDB deste navegador. O vídeo fica apenas na sessão por padrão; a cópia persistente exige ativar a opção na tela. A atualização do banco preserva os vídeos e legendas criados antes da versão 0.2.
 - O app não criptografa a biblioteca. Use um perfil confiável, principalmente para conteúdo interno. Sites no mesmo domínio/origem compartilham os limites de segurança de armazenamento do navegador; tenha cuidado com outros projetos publicados no mesmo domínio do Pages.
 - Não há sincronização entre celulares e computadores. O navegador pode remover dados por pressão de armazenamento; modo privado, reinstalação e limpeza do site podem apagar a biblioteca. Mantenha os arquivos originais e backups JSON em locais adequados para dados internos.
 - Em **Privacidade**, é possível excluir a biblioteca e os modelos em cache. Excluir um projeto remove somente a cópia do app; não altera o arquivo original.
@@ -76,12 +94,15 @@ CHROMIUM_PATH=/usr/bin/chromium npm run test:e2e
 
 Em outra instalação, use `npx playwright install chromium` e informe o caminho do executável em `CHROMIUM_PATH`. O teste de falha de download bloqueia explicitamente o destino dos modelos: ele verifica extração de áudio e tratamento do erro, e não demonstra inferência bem-sucedida. O teste gera um vídeo sintético em uma pasta temporária. `EXAMPLE_VIDEO=/caminho/privado/video.mp4` permite exercitar a extração com outro arquivo sem copiá-lo para o repositório.
 
+Os testes de materiais geram um PDF sintético com texto e imagem. `EXAMPLE_PDF=/caminho/privado/documento.pdf` permite executar esse fluxo com outro PDF. A narração é verificada com uma simulação controlada do serviço de voz local: pausa, retomada, leitura de trechos, sincronização e silenciamento. Essa simulação não comprova saída de som em um dispositivo real. Vozes remotas são explicitamente testadas como não permitidas.
+
 ### Inferência real e validação nesta entrega
 
 Com o servidor de testes rodando (`node scripts/test-server.mjs`), é possível validar os modelos completos com um arquivo local:
 
 ```sh
 VIDEO_INPUT=/caminho/privado/video.mp4 npm run test:ai
+PDF_INPUT=/caminho/privado/documento.pdf npm run test:pdf
 ```
 
 Esse teste exige acesso aos modelos, espaço e memória. Verifica a extração, transcrição, tradução, tempos válidos e textos distintos nos dois idiomas, sem imprimir o conteúdo privado. Em seguida desativa a conexão e processa o vídeo inteiro novamente com os modelos em cache. No runner de nuvem, usa `curl` para transportar somente os downloads GET pelo proxy HTTPS configurado, mantendo a verificação TLS; a extração e a inferência executam nos workers WebAssembly reais do Chromium. Em um navegador do usuário, o aplicativo baixa os modelos diretamente, sem essa adaptação de testes.
@@ -90,11 +111,16 @@ O build, seis testes unitários e quatro testes funcionais em Chromium passaram.
 
 O proxy inicialmente bloqueou o Hugging Face e passou a permitir os downloads após a configuração de rede. Os destinos necessários estão registrados no rascunho do ambiente (`huggingface.co`, `*.hf.co`, `*.xethub.hf.co`).
 
+Na versão 0.2, o PDF de exemplo de duas páginas foi extraído com sete imagens e 17 blocos de texto, traduzido com o modelo real e reaberto offline. O fluxo de vídeo também foi revalidado com transcrição/tradução reais e processamento completo offline. No Chromium deste ambiente não há voz local PT-BR instalada: os controles de narração foram testados com simulação de voz, e a reprodução audível depende de uma voz local disponível no dispositivo do usuário.
+
 ## Estrutura
 
 - `src/main.ts`: interface, player, sincronização e gerenciamento de projetos.
 - `src/processor.worker.ts`: extração, transcrição e tradução locais.
 - `src/storage.ts`: biblioteca IndexedDB e remoção de modelos.
+- `src/learning.ts`: projetos, subassuntos, biblioteca de PDFs e leitor de páginas.
+- `src/pdf.ts`: extração local de textos/imagens e preservação das páginas originais com PDF.js.
+- `src/narration.ts`: leitura em PT-BR usando somente vozes locais e sincronização com o vídeo.
 - `src/subtitles.mjs`: importação/exportação e validação de tempos.
 - `scripts/build-service-worker.mjs`: cache versionado pelo conteúdo do build e limitado ao escopo do app.
 - `tests/`: testes unitários e funcionais em Chromium.
