@@ -11,14 +11,17 @@ export type Project = {
   video?: Blob;
   collectionId?: string;
   subjectId?: string;
+  completedAt?: number;
+  sourceLanguage?: string;
+  analysis?: string;
 };
 
 export type Assignment = { collectionId?: string; subjectId?: string };
-export type LearningProject = { id: string; title: string; createdAt: number; subjects: { id: string; title: string }[] };
+export type LearningProject = { id: string; title: string; createdAt: number; subjects: { id: string; title: string }[]; lastMaterialId?: string; notes?: string };
 export type PdfBlock = { id: string; original: string; translated: string; y: number; heading: boolean };
 export type PdfImage = { id: string; blob: Blob; width: number; height: number; y: number; displayWidth?: number; blank?: boolean };
 export type PdfPage = { number: number; blocks: PdfBlock[]; images: PdfImage[]; preview: Blob };
-export type PdfDocument = Assignment & { id: string; title: string; filename: string; createdAt: number; pages: PdfPage[] };
+export type PdfDocument = Assignment & { id: string; title: string; filename: string; createdAt: number; pages: PdfPage[]; completedAt?: number; sourceLanguage?: string; analysis?: string };
 
 export type WorkerEvent =
   | { type: 'status'; stage: 'audio' | 'models' | 'transcribe' | 'translate'; message: string; progress?: number }

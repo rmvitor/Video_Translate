@@ -1,3 +1,4 @@
+import { LANGUAGES } from './preferences.mjs';
 export function formatClock(seconds) {
   const value = Math.max(0, Math.floor(Number(seconds) || 0));
   const hours = Math.floor(value / 3600);
@@ -61,6 +62,9 @@ export function validateProject(data) {
     lastModified: Number.isFinite(data.lastModified) ? data.lastModified : 0,
     duration: Number.isFinite(data.duration) && data.duration >= 0 ? data.duration : 0,
     segments,
+    sourceLanguage: LANGUAGES.some(([code]) => code === data.sourceLanguage) ? data.sourceLanguage : 'en',
+    analysis: typeof data.analysis === 'string' ? data.analysis.slice(0, 40000) : undefined,
+    completedAt: Number.isFinite(data.completedAt) && data.completedAt > 0 ? data.completedAt : undefined,
     collectionId: typeof data.collectionId === 'string' ? data.collectionId.slice(0, 100) : undefined,
     subjectId: typeof data.subjectId === 'string' ? data.subjectId.slice(0, 100) : undefined,
   };

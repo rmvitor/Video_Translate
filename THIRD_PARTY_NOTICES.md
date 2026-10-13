@@ -12,6 +12,8 @@ O build distribui bibliotecas e runtimes instalados pelo npm. Preserve as licen�
 | Lucide | 0.468.0 | ISC · https://github.com/lucide-icons/lucide |
 | PDF.js / pdfjs-dist | 5.4.624 | Apache-2.0 · https://github.com/mozilla/pdf.js |
 | whisper-tiny.en (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/whisper-tiny.en |
+| whisper-tiny (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/whisper-tiny |
+| m2m100_418M (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/m2m100_418M · modelo original: https://huggingface.co/facebook/m2m100_418M |
 | opus-mt-en-ROMANCE (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/opus-mt-en-ROMANCE |
 
 `prepare:assets` copia os arquivos de licença disponíveis para `dist/licenses/` através de `public/licenses/`. O texto da GPL e as licenças dos runtimes estão nessa pasta. Consulte os avisos distribuídos e os respectivos repositórios para termos completos e código-fonte correspondente.

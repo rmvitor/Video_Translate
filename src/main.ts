@@ -1,5 +1,10 @@
 import './style.css';
 import './learning.css';
+import './theme.css';
+import './course.css';
+import { initAppearance } from './appearance';
+import { createOnlineAssistant } from './online';
+import { LANGUAGES } from './preferences.mjs';
 import { createIcons, Play, Layers, Languages, ShieldCheck, HardDrive, Download, Upload, Plus, ArrowUpRight, FileVideo, Search, Captions, Check, X, LoaderCircle, ChevronRight, Trash2, FolderOpen, Settings2, Pencil, FileText, MonitorSmartphone, BookOpen, WifiOff, Clock3, CircleHelp, Sparkles, ArrowLeft, Menu, Volume2, Pause } from 'lucide';
 import type { Project, Segment, WorkerEvent, Assignment } from './types';
 import { createLearningArea } from './learning';
@@ -42,19 +47,20 @@ $('#app').innerHTML = `
       <button class="nav-item" data-view="documents">${icon('file-text')}<span>Páginas PDF</span></button>
       <button class="nav-item" data-view="collections">${icon('folder-open')}<span>Projetos e assuntos</span></button>
       <button class="nav-item" data-view="library">${icon('layers')}<span>Minha biblioteca</span><span id="library-count" class="nav-count">0</span></button>
+      <button class="nav-item" data-view="settings">${icon('settings-2')}<span>Preferências</span></button>
       <button class="nav-item" data-view="privacy">${icon('shield-check')}<span>Privacidade</span></button>
     </nav>
     <div class="sidebar-bottom">
-      <div class="local-card"><span class="local-icon">${icon('hard-drive')}</span><strong>Seu dispositivo. Seu conteúdo.</strong><p>Os vídeos ficam com você.<br>A tradução acontece aqui.</p><span class="local-indicator"><span></span> Processamento local</span></div>
+      <div class="local-card"><span class="local-icon">${icon('hard-drive')}</span><strong>Seu dispositivo. Seu conteúdo.</strong><p>Os vídeos ficam com você.<br>Tradução local ou de texto online.</p><span class="local-indicator"><span></span> Processamento local</span></div>
       <button class="install-button" id="install">${icon('monitor-smartphone')}<span>Instalar aplicativo</span>${icon('arrow-up-right')}</button>
-      <div class="sidebar-footer">Feito para aprender, sem barreiras.<span>v0.2 · PWA</span></div>
+      <div class="sidebar-footer">Feito para compreender, sem barreiras.<span>v0.3 · PWA</span></div>
     </div>
   </aside>
   <div class="app-content">
     <header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" id="menu" aria-label="Abrir menu" aria-expanded="false" aria-controls="sidebar">${icon('menu')}</button><span>Seu espaço</span>${icon('chevron-right')}<strong id="breadcrumb-label">Traduzir vídeo</strong></div><div class="private-pill">${icon('shield-check')}<span>Privado por natureza</span></div></header>
     <main>
       <section id="workspace-view">
-        <div class="page-heading"><div><div class="eyebrow">APRENDA NO SEU RITMO</div><h1>Entenda cada palavra<span>.</span></h1><p>Seu vídeo em inglês. Sua compreensão em português.</p></div><button class="button primary" data-action="choose-video">${icon('plus')}Adicionar vídeo</button></div>
+        <div class="page-heading"><div><div class="eyebrow">COMPREENDA NO SEU RITMO</div><h1>Entenda cada palavra<span>.</span></h1><p>Seus vídeos em outro idioma. Sua compreensão em português.</p></div><button class="button primary" data-action="choose-video">${icon('plus')}Adicionar vídeo</button></div>
         <div class="workflow-strip"><span><b>01</b> Adicione seu vídeo</span>${icon('chevron-right')}<span><b>02</b> Transcreva e traduza</span>${icon('chevron-right')}<span><b>03</b> Assista no seu idioma</span><span class="workflow-local">${icon('shield-check')}Sem upload do vídeo</span></div>
         <div class="workspace-grid">
           <section class="player-card" aria-label="Player do vídeo">
@@ -65,25 +71,26 @@ $('#app').innerHTML = `
               <div id="reattach" class="reattach" hidden><span>${icon('file-video')}</span><h3>Selecione o vídeo novamente</h3><p>As legendas estão aqui. O vídeo não foi guardado no dispositivo.</p><button class="button light" id="reattach-button">${icon('folder-open')}Localizar vídeo</button></div>
             </div>
             <div class="player-info"><div><strong id="file-title">Seu próximo treinamento</strong><span id="file-detail">Adicione um vídeo para começar</span></div><span class="language-route">EN ${icon('arrow-up-right')} PT-BR</span></div>
-            <div class="player-toolbar"><label class="checkbox-label"><input type="checkbox" id="remember" /><span>Guardar vídeo neste dispositivo</span><button class="icon-button" data-action="storage-help" aria-label="Como funciona o armazenamento local">${icon('circle-help')}</button></label><label class="caption-select">${icon('captions')}<select id="caption-language" aria-label="Idioma das legendas"><option value="translated">Português</option><option value="original">Inglês</option><option value="both">Os dois idiomas</option><option value="off">Sem legenda</option></select></label></div>
+            <div class="player-toolbar"><label class="checkbox-label"><input type="checkbox" id="remember" /><span>Guardar vídeo neste dispositivo</span><button class="icon-button" data-action="storage-help" aria-label="Como funciona o armazenamento local">${icon('circle-help')}</button></label><label class="caption-select">${icon('captions')}<select id="caption-language" aria-label="Idioma das legendas"><option value="translated">Português</option><option value="original">Original</option><option value="both">Os dois idiomas</option><option value="off">Sem legenda</option></select></label></div>
             <div class="narration-panel"><div class="narration-toggles"><label><input type="checkbox" id="video-narration" />${icon('volume-2')}Narrar em PT-BR</label><label><input type="checkbox" id="mute-original" />Silenciar áudio original</label></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local do vídeo"></select></label><label>Velocidade<select data-voice-rate aria-label="Velocidade da narração do vídeo"><option value="0.8">0,8×</option><option value="1">1×</option><option value="1.2">1,2×</option><option value="1.5">1,5×</option></select></label></div><p id="narration-status" aria-live="polite">A narração usa uma voz local PT-BR instalada no dispositivo.</p></div>
-            <div class="process-area"><div class="process-copy"><span class="sparkle-icon">${icon('sparkles')}</span><div><strong id="process-title">Traduza sem sair daqui</strong><p id="process-description">A IA roda no navegador. Nenhuma chave de API necessária.</p></div></div><button class="button primary" id="process" disabled>${icon('languages')}Transcrever e traduzir</button></div>
+            <div class="source-settings"><label>Idioma original<select id="video-source-language">${LANGUAGES.map(([code, label]) => `<option value="${code}">${label}</option>`).join('')}</select></label><p>Para outros idiomas, os modelos locais são maiores. Se preferir Gemini, transcreva localmente e envie somente o texto.</p><div class="inline-actions"><button class="button secondary" id="transcribe-only">Só transcrever localmente</button><button class="button secondary" id="online-video">Traduzir texto com Gemini</button><button class="text-button" id="analyze-video">Analisar texto com Gemini</button></div><details id="video-analysis" hidden><summary>Análise em PT-BR</summary><p class="analysis-copy"></p></details></div><div class="process-area"><div class="process-copy"><span class="sparkle-icon">${icon('sparkles')}</span><div><strong id="process-title">Traduza sem sair daqui</strong><p id="process-description">A IA roda no navegador. Nenhuma chave de API necessária.</p></div></div><button class="button primary" id="process" disabled>${icon('languages')}Transcrever e traduzir</button></div>
             <div class="progress-area" id="progress-area" hidden aria-live="polite"><div class="progress-top"><span>${icon('loader-circle', 'spin')}<strong id="progress-message">Preparando…</strong></span><button class="text-button" id="cancel">Cancelar</button></div><div class="progress-track"><div id="progress-bar"></div></div><p>O processamento é local. Mantenha esta tela aberta; o primeiro uso baixa os modelos de IA.</p></div>
             <div class="error-panel" id="error-panel" hidden role="alert"><strong>Não foi possível concluir</strong><p id="error-message"></p><details><summary>Detalhes técnicos</summary><pre id="error-detail"></pre></details></div>
           </section>
           <section class="transcript-card" aria-label="Transcrição sincronizada">
             <div class="transcript-top"><div><h2>${icon('captions')}Palavra por palavra</h2><p>Acompanhe o texto junto com o vídeo.</p></div><button class="icon-button" id="export" aria-label="Exportar legendas" disabled>${icon('download')}</button></div>
-            <div class="transcript-tabs" role="tablist" aria-label="Idioma da transcrição"><button role="tab" aria-selected="true" class="active" data-language="translated">Português <span>BR</span></button><button role="tab" aria-selected="false" data-language="original">Original <span>EN</span></button><button role="tab" aria-selected="false" data-language="both">Ambos</button></div>
+            <div class="transcript-tabs" role="tablist" aria-label="Idioma da transcrição"><button role="tab" aria-selected="true" class="active" data-language="translated">Português <span>BR</span></button><button role="tab" aria-selected="false" data-language="original">Original</button><button role="tab" aria-selected="false" data-language="both">Ambos</button></div>
             <div class="transcript-search">${icon('search')}<input type="search" id="search" placeholder="Buscar na transcrição" aria-label="Buscar na transcrição" disabled /><span id="segment-count">0 trechos</span></div>
             <div class="transcript-scroll" id="transcript"><div class="transcript-empty"><div class="paper-visual">${icon('file-text')}<span></span><span></span><span></span></div><h3>As palavras vão aparecer aqui</h3><p>Transcreva seu vídeo para acompanhar<br>cada trecho em português.</p><span class="tiny-pill">${icon('clock-3')}Sincronizado com a reprodução</span></div></div>
             <div class="transcript-bottom"><label class="switch-label"><input type="checkbox" id="follow" checked /><span class="switch"></span> Acompanhar vídeo</label><button class="text-button" id="import-captions">Importar legenda</button></div>
           </section>
         </div>
-        <div class="feature-grid"><div>${icon('shield-check')}<div><strong>Privacidade em primeiro lugar</strong><p>Vídeo e áudio nunca são enviados a um servidor.</p></div></div><div>${icon('book-open')}<div><strong>Aprenda no seu idioma</strong><p>Leia, busque e volte ao trecho que precisar.</p></div></div><div>${icon('monitor-smartphone')}<div><strong>Seu espaço em qualquer tela</strong><p>Instale no computador ou no celular.</p></div></div></div>
+        <div class="feature-grid"><div>${icon('shield-check')}<div><strong>Privacidade em primeiro lugar</strong><p>Vídeo e áudio nunca são enviados a um servidor.</p></div></div><div>${icon('book-open')}<div><strong>Entenda no seu idioma</strong><p>Leia, busque e volte ao trecho que precisar.</p></div></div><div>${icon('monitor-smartphone')}<div><strong>Seu espaço em qualquer tela</strong><p>Instale no computador ou no celular.</p></div></div></div>
         <div class="model-note">${icon('download')}No primeiro uso, os modelos de IA são baixados (centenas de MB). Depois, os modelos completos em cache podem funcionar offline. A tradução automática pode precisar de revisão.</div>
       </section>
-      <section id="library-view" hidden><div class="page-heading"><div><div class="eyebrow">APRENDIZADO QUE FICA</div><h1>Minha biblioteca<span>.</span></h1><p>Projetos guardados apenas neste navegador e dispositivo.</p></div><button class="button secondary" id="import-project">${icon('upload')}Importar projeto</button></div><div class="library-notice">${icon('hard-drive')}Vídeos só são guardados quando você ativa essa opção. Exporte os projetos como backup: limpar os dados do navegador pode apagar sua biblioteca.</div><div id="library-grid" class="library-grid"></div></section>
-      <section id="privacy-view" hidden><div class="page-heading"><div><div class="eyebrow">VOCÊ TEM O CONTROLE</div><h1>Privado por natureza<span>.</span></h1><p>Uma ferramenta pública. Seus treinamentos continuam privados.</p></div></div><div class="privacy-grid"><article class="info-card">${icon('shield-check')}<h2>O arquivo fica com você</h2><p>Vídeos, PDFs, imagens, transcrições e traduções são processados no navegador. A narração usa somente vozes PT-BR que o navegador identifica como locais. Não usamos serviços de transcrição ou tradução remotos, contas, analytics ou uploads.</p><p>O site e os modelos de IA precisam ser baixados pela internet no primeiro uso. Esses pedidos de download não contêm o conteúdo do seu vídeo.</p></article><article class="info-card">${icon('hard-drive')}<h2>Biblioteca local, sem nuvem</h2><p>Os textos, projetos de estudo e imagens das páginas PDF ficam no IndexedDB deste navegador. Por padrão, o vídeo só fica na memória da sessão. Ative “Guardar vídeo neste dispositivo” para também manter uma cópia local.</p><p>Os dados não são criptografados pelo aplicativo. Outras pessoas com acesso a este perfil do navegador podem abrir a biblioteca. Use um dispositivo e perfil confiáveis.</p></article><article class="info-card">${icon('wifi-off')}<h2>Preparado para ficar offline</h2><p>O aplicativo instalado guarda a interface. Os modelos completos baixados são armazenados em cache. Antes de depender do modo offline, conclua um processamento online e teste novamente sem conexão.</p><p>Celulares com pouca memória podem não conseguir executar os modelos. Você pode importar legendas ou projetos produzidos em outro dispositivo.</p></article><article class="info-card">${icon('settings-2')}<h2>Seus dados, suas escolhas</h2><p>Exporte textos e legendas pela área de tradução e páginas PDF em HTML com imagens incorporadas. Exporte um projeto JSON para manter os dois idiomas e os tempos (o JSON não inclui o vídeo).</p><p id="storage-estimate">Consultando armazenamento…</p><button class="button danger" id="clear-data">${icon('trash-2')}Apagar biblioteca e modelos locais</button></article></div></section>
+      <section id="library-view" hidden><div class="page-heading"><div><div class="eyebrow">CONTEÚDO QUE FICA</div><h1>Minha biblioteca<span>.</span></h1><p>Projetos guardados apenas neste navegador e dispositivo.</p></div><button class="button secondary" id="import-project">${icon('upload')}Importar projeto</button></div><div class="library-notice">${icon('hard-drive')}Vídeos só são guardados quando você ativa essa opção. Exporte os projetos como backup: limpar os dados do navegador pode apagar sua biblioteca.</div><div id="library-grid" class="library-grid"></div></section>
+      <section id="privacy-view" hidden><div class="page-heading"><div><div class="eyebrow">VOCÊ TEM O CONTROLE</div><h1>Privado por natureza<span>.</span></h1><p>Uma ferramenta pública. Seus treinamentos continuam privados.</p></div></div><div class="privacy-grid"><article class="info-card">${icon('shield-check')}<h2>O arquivo fica com você</h2><p>Vídeos, PDFs, imagens, transcrições e traduções são processados no navegador. A narração usa somente vozes PT-BR que o navegador identifica como locais. A transcrição e a tradução local funcionam no dispositivo. Se você escolher o Gemini, somente os textos selecionados e autorizados serão enviados para tradução ou análise. Vídeo, áudio, PDF e imagens nunca são enviados. A chave fica apenas na memória da sessão. Não usamos analytics.</p><p>O site e os modelos de IA precisam ser baixados pela internet no primeiro uso. Esses pedidos de download não contêm o conteúdo do seu vídeo.</p></article><article class="info-card">${icon('hard-drive')}<h2>Biblioteca local, sem nuvem</h2><p>Os textos, projetos de estudo e imagens das páginas PDF ficam no IndexedDB deste navegador. Por padrão, o vídeo só fica na memória da sessão. Ative “Guardar vídeo neste dispositivo” para também manter uma cópia local.</p><p>Os dados não são criptografados pelo aplicativo. Outras pessoas com acesso a este perfil do navegador podem abrir a biblioteca. Use um dispositivo e perfil confiáveis.</p></article><article class="info-card">${icon('wifi-off')}<h2>Preparado para ficar offline</h2><p>O aplicativo instalado guarda a interface. Os modelos completos baixados são armazenados em cache. Antes de depender do modo offline, conclua um processamento online e teste novamente sem conexão.</p><p>Celulares com pouca memória podem não conseguir executar os modelos. Você pode importar legendas ou projetos produzidos em outro dispositivo.</p></article><article class="info-card">${icon('settings-2')}<h2>Seus dados, suas escolhas</h2><p>Exporte textos e legendas pela área de tradução e páginas PDF em HTML com imagens incorporadas. Exporte um projeto JSON para manter os dois idiomas e os tempos (o JSON não inclui o vídeo).</p><p id="storage-estimate">Consultando armazenamento…</p><button class="button danger" id="clear-data">${icon('trash-2')}Apagar biblioteca e modelos locais</button></article></div></section>
+      <section id="settings-view" hidden><div class="page-heading"><div><div class="eyebrow">DO SEU JEITO</div><h1>Preferências<span>.</span></h1><p>Escolha a aparência e configure a tradução opcional de texto.</p></div></div><div class="settings-grid"><article class="info-card"><h2>Aparência</h2><div id="appearance-fields"></div></article><article class="info-card"><h2>Tradução e análise online</h2><div id="online-fields"></div></article></div></section>
     </main>
     <footer class="main-footer"><span>entrelinhas<span class="brand-dot">.</span></span><span>Mais compreensão. Menos barreiras.</span><button class="text-button" data-view="privacy">Sobre a privacidade ${icon('arrow-up-right')}</button></footer>
   </div>
@@ -94,14 +101,16 @@ $('#app').innerHTML = `
   <div id="toast" class="toast" hidden role="status"></div>
 `;
 icons();
+initAppearance();
+const online = createOnlineAssistant({ toast, dialog, isBusy: () => processing || Boolean(learning?.busy) });
 const videoNarration = new VideoNarration($<HTMLVideoElement>('#video'), narrator, () => project?.segments ?? [], message => {
   $('#narration-status').textContent = message;
   $<HTMLInputElement>('#video-narration').checked = videoNarration.enabled;
 }, $<HTMLInputElement>('#mute-original'));
 learning = createLearningArea({
-  toast, icons, dialog, changeView, narrator, isBusy: () => processing,
+  toast, icons, dialog, changeView, narrator, online, currentView: () => currentView, isBusy: () => processing || online.busy,
   stopMedia: () => { videoNarration.disable(); $<HTMLVideoElement>('#video').pause(); },
-  openVideo: openProject, currentVideo: () => project,
+  openVideo: openProject, refreshVideos: refreshLibrary, currentVideo: () => project,
   addVideo: value => { pendingOrganization = value; attachToProject = false; $<HTMLInputElement>('#video-input').click(); },
   assignVideo: async value => { if (project) { Object.assign(project, value); await persist(); updateProjectUI(); } },
 });
@@ -126,12 +135,13 @@ function dialog(content: string) {
 }
 
 function changeView(view: string) {
+  learning?.prepareView(view);
   currentView = view;
-  for (const name of ['workspace', 'library', 'privacy', 'documents', 'collections']) $(`#${name}-view`).hidden = name !== view;
+  for (const name of ['workspace', 'library', 'privacy', 'documents', 'collections', 'settings']) $(`#${name}-view`).hidden = name !== view;
   if (view !== 'workspace') { videoNarration.disable(); $<HTMLVideoElement>('#video').pause(); }
   if (view !== 'documents') { narrator.stop(); document.querySelectorAll('.is-reading').forEach(el => el.classList.remove('is-reading')); }
   document.querySelectorAll('[data-view]').forEach(el => el.classList.toggle('selected', el.getAttribute('data-view') === view));
-  $('#breadcrumb-label').textContent = ({ workspace: 'Traduzir vídeo', library: 'Minha biblioteca', privacy: 'Privacidade', documents: 'Páginas PDF', collections: 'Projetos e assuntos' })[view] ?? '';
+  $('#breadcrumb-label').textContent = ({ workspace: 'Traduzir vídeo', library: 'Minha biblioteca', privacy: 'Privacidade', documents: 'Páginas PDF', collections: 'Projetos e assuntos', settings: 'Preferências' })[view] ?? '';
   $('#sidebar').classList.remove('menu-open');
   $('#menu-backdrop').hidden = true;
   $('#menu').setAttribute('aria-expanded', 'false');
@@ -153,7 +163,7 @@ async function refreshLibrary() {
 }
 
 function renderLibrary() {
-  $('#library-grid').innerHTML = projects.length ? projects.map(p => `<article class="library-card"><div class="library-thumbnail">${icon('file-video')}<span class="badge">${p.video ? 'Vídeo local' : 'Somente textos'}</span></div><div class="library-body"><h2>${escape(p.title)}</h2><p>${formatClock(p.duration)} · ${p.segments.length} trechos · ${new Date(p.createdAt).toLocaleDateString('pt-BR')}</p><div class="library-actions"><button class="button secondary" data-open="${escape(p.id)}">${icon('play')}Abrir projeto</button><button class="icon-button" data-delete="${escape(p.id)}" aria-label="Excluir ${escape(p.title)}">${icon('trash-2')}</button></div></div></article>`).join('') : `<div class="library-empty">${icon('layers')}<h2>Seu aprendizado começa com um vídeo.</h2><p>Os projetos que você criar vão aparecer aqui, apenas neste dispositivo.</p><button class="button primary" data-action="choose-video">${icon('plus')}Adicionar primeiro vídeo</button></div>`;
+  $('#library-grid').innerHTML = projects.length ? projects.map(p => `<article class="library-card"><div class="library-thumbnail">${icon('file-video')}<span class="badge">${p.video ? 'Vídeo local' : 'Somente textos'}</span></div><div class="library-body"><h2>${escape(p.title)}</h2><p>${formatClock(p.duration)} · ${p.segments.length} trechos · ${new Date(p.createdAt).toLocaleDateString('pt-BR')}</p><div class="library-actions"><button class="button secondary" data-open="${escape(p.id)}">${icon('play')}Abrir projeto</button><button class="icon-button" data-delete="${escape(p.id)}" aria-label="Excluir ${escape(p.title)}">${icon('trash-2')}</button></div></div></article>`).join('') : `<div class="library-empty">${icon('layers')}<h2>Seu conteúdo começa com um vídeo.</h2><p>Os projetos que você criar vão aparecer aqui, apenas neste dispositivo.</p><button class="button primary" data-action="choose-video">${icon('plus')}Adicionar primeiro vídeo</button></div>`;
   icons();
 }
 
@@ -191,6 +201,13 @@ function showVideo(blob: Blob) {
 }
 
 function updateProjectUI() {
+  $<HTMLSelectElement>('#video-source-language').value = project?.sourceLanguage || 'en';
+  $<HTMLSelectElement>('#video-source-language').disabled = !project || processing || Boolean(learning?.busy);
+  for (const id of ['online-video', 'analyze-video']) $<HTMLButtonElement>(`#${id}`).disabled = !project?.segments.length || processing;
+  $<HTMLButtonElement>('#transcribe-only').disabled = !project || processing || (!currentFile && !project.segments.length);
+  $('#video-analysis').hidden = !project?.analysis;
+  $('#video-analysis .analysis-copy').textContent = project?.analysis || '';
+  $('.language-route').innerHTML = `${escape((project?.sourceLanguage || 'en').toUpperCase())} ${icon('arrow-up-right')} PT-BR`;
   $('#file-title').textContent = project?.title ?? 'Seu próximo treinamento';
   $('#file-detail').textContent = project ? `${formatClock(project.duration)} · ${megabytes(project.size)} · ${project.filename || 'Selecione o vídeo original'}` : 'Adicione um vídeo para começar';
   $('#video-badge').textContent = project?.video ? 'Guardado neste dispositivo' : 'Somente neste dispositivo';
@@ -234,8 +251,8 @@ function updateCaptions() {
   captionsURL = URL.createObjectURL(new Blob([exportSubtitles(captions, 'translated', 'vtt')], { type: 'text/vtt' }));
   const track = document.createElement('track');
   track.kind = 'subtitles';
-  track.label = language === 'original' ? 'English' : 'Português';
-  track.srclang = language === 'original' ? 'en' : 'pt-BR';
+  track.label = language === 'original' ? (LANGUAGES.find(([code]) => code === (project?.sourceLanguage || 'en'))?.[1] || 'Original') : 'Português';
+  track.srclang = language === 'original' ? (project?.sourceLanguage || 'en') : 'pt-BR';
   track.src = captionsURL;
   track.default = true;
   video.append(track);
@@ -251,7 +268,7 @@ function cancelProcessing(silent = false) {
 }
 
 async function chooseVideo(file: File) {
-  if (processing || learning.busy) { toast('Cancele o processamento atual antes de trocar de vídeo.'); return; }
+  if (processing || learning.busy || online.busy) { toast('Cancele o processamento atual antes de trocar de vídeo.'); return; }
   if (file.size > 500 * 1024 * 1024) { toast('Escolha um vídeo de até 500 MB.'); return; }
   if (!file.type.startsWith('video/') && !/\.(mp4|mov|webm|mkv)$/i.test(file.name)) { toast('Escolha um arquivo de vídeo MP4, WebM, MOV ou MKV.'); return; }
   if (attachToProject && project && ((project.filename && file.name !== project.filename) || (project.size && file.size !== project.size))) {
@@ -286,6 +303,7 @@ async function chooseVideo(file: File) {
       project = { ...project!, filename: file.name, size: file.size, lastModified: file.lastModified, duration: video.duration };
     }
     if (pendingOrganization && !attaching) Object.assign(project!, pendingOrganization);
+    const returnToCourse = Boolean(pendingOrganization?.collectionId) || learning.inProject;
     pendingOrganization = undefined;
     active = -1;
     $<HTMLInputElement>('#search').value = '';
@@ -293,6 +311,7 @@ async function chooseVideo(file: File) {
     changeView('workspace');
     updateProjectUI(); renderTranscript(); updateCaptions();
     await persist();
+    if (returnToCourse && project?.collectionId) await learning.showVideoInProject(project.id);
   } catch (error) {
     project = previous; currentFile = previousFile;
     clearVideo();
@@ -303,8 +322,8 @@ async function chooseVideo(file: File) {
   }
 }
 
-function startProcessing() {
-  if (learning.busy) { toast('Conclua ou cancele o processamento do PDF primeiro.'); return; }
+function startProcessing(transcribeOnly = false) {
+  if (learning.busy || online.busy) { toast('Conclua ou cancele o processamento atual primeiro.'); return; }
   if (processing || !project || (!currentFile && !project.segments.length)) return;
   if (!window.Worker || !window.WebAssembly) { toast('Este navegador não suporta o processamento local. Use uma versão atual do Chrome, Edge, Firefox ou Safari.'); return; }
   processing = true;
@@ -340,14 +359,14 @@ function startProcessing() {
       active = activeSegment(project.segments, $<HTMLVideoElement>('#video').currentTime);
       updateProjectUI(); renderTranscript(); updateCaptions();
       await persist();
-      toast('Tradução concluída. Dê play e acompanhe as legendas.');
+      toast(transcribeOnly ? 'Transcrição local concluída. Você pode enviar os textos selecionados ao Gemini.' : 'Tradução concluída. Dê play e acompanhe as legendas.');
     }
   };
-  worker.postMessage({ file: currentFile, segments: project.segments.length ? project.segments : undefined, baseURL: appURL.href });
+  worker.postMessage({ sourceLanguage: project.sourceLanguage || 'en', transcribeOnly, file: currentFile, segments: project.segments.length ? project.segments : undefined, baseURL: appURL.href });
 }
 
 async function openProject(id: string) {
-  if (processing || learning.busy) { toast('Cancele o processamento antes de abrir outro projeto.'); return; }
+  if (processing || learning.busy || online.busy) { toast('Cancele o processamento antes de abrir outro projeto.'); return; }
   const selected = projects.find(p => p.id === id);
   if (!selected) return;
   project = selected;
@@ -372,13 +391,13 @@ function download(text: string, extension: string, type: string) {
 
 function exportDialog() {
   if (!project?.segments.length) return;
-  dialog(`<div class="dialog-symbol">${icon('download')}</div><h2>Leve as palavras com você.</h2><p>Arquivos exportados não incluem o vídeo. Guarde-os em um local adequado para conteúdo interno.</p><label class="field-label">Idioma<select id="export-language"><option value="translated">Português</option><option value="original">Inglês</option></select></label><div class="export-options"><button class="button secondary" data-format="srt">${icon('captions')}Legenda SRT</button><button class="button secondary" data-format="vtt">${icon('captions')}Legenda VTT</button><button class="button secondary" data-format="txt">${icon('file-text')}Texto completo</button><button class="button secondary" data-format="json">${icon('layers')}Projeto (ambos os idiomas)</button></div><p class="dialog-note">O projeto JSON preserva os tempos e textos para importar depois. O vídeo deve ser guardado separadamente.</p>`);
+  dialog(`<div class="dialog-symbol">${icon('download')}</div><h2>Leve as palavras com você.</h2><p>Arquivos exportados não incluem o vídeo. Guarde-os em um local adequado para conteúdo interno.</p><label class="field-label">Idioma<select id="export-language"><option value="translated">Português</option><option value="original">Original</option></select></label><div class="export-options"><button class="button secondary" data-format="srt">${icon('captions')}Legenda SRT</button><button class="button secondary" data-format="vtt">${icon('captions')}Legenda VTT</button><button class="button secondary" data-format="txt">${icon('file-text')}Texto completo</button><button class="button secondary" data-format="json">${icon('layers')}Projeto (ambos os idiomas)</button></div><p class="dialog-note">O projeto JSON preserva os tempos e textos para importar depois. O vídeo deve ser guardado separadamente.</p>`);
 }
 
 function editSegment(index: number) {
   const segment = project?.segments[index];
   if (!segment || processing) return;
-  dialog(`<h2>Revise este trecho</h2><p>Ajuste termos do treinamento e a tradução para PT-BR.</p><form id="edit-form"><div class="time-fields"><label class="field-label">Início (segundos)<input type="number" step="0.01" min="0" id="edit-start" value="${segment.start}" required /></label><label class="field-label">Fim (segundos)<input type="number" step="0.01" min="0" id="edit-end" value="${segment.end}" required /></label></div><label class="field-label">Original em inglês<textarea id="edit-original" rows="3" required>${escape(segment.original)}</textarea></label><label class="field-label">Tradução em português<textarea id="edit-translated" rows="3">${escape(segment.translated)}</textarea></label><p id="edit-error" class="field-error" role="alert"></p><button class="button primary" type="submit">${icon('check')}Salvar alterações</button></form>`);
+  dialog(`<h2>Revise este trecho</h2><p>Ajuste termos do treinamento e a tradução para PT-BR.</p><form id="edit-form"><div class="time-fields"><label class="field-label">Início (segundos)<input type="number" step="0.01" min="0" id="edit-start" value="${segment.start}" required /></label><label class="field-label">Fim (segundos)<input type="number" step="0.01" min="0" id="edit-end" value="${segment.end}" required /></label></div><label class="field-label">Texto original<textarea id="edit-original" rows="3" required>${escape(segment.original)}</textarea></label><label class="field-label">Tradução em português<textarea id="edit-translated" rows="3">${escape(segment.translated)}</textarea></label><p id="edit-error" class="field-error" role="alert"></p><button class="button primary" type="submit">${icon('check')}Salvar alterações</button></form>`);
   $('#edit-form').addEventListener('submit', async () => {
     const start = Number($<HTMLInputElement>('#edit-start').value);
     const end = Number($<HTMLInputElement>('#edit-end').value);
@@ -462,7 +481,12 @@ $('#dropzone').addEventListener('drop', event => {
 window.addEventListener('dragover', event => event.preventDefault());
 window.addEventListener('drop', event => event.preventDefault());
 
-$('#process').addEventListener('click', startProcessing);
+$('#process').addEventListener('click', () => startProcessing());
+$('#transcribe-only').addEventListener('click', () => startProcessing(true));
+$('#video-source-language').addEventListener('change', async () => { if (!project || processing || online.busy || learning.busy) return; project.sourceLanguage = $<HTMLSelectElement>('#video-source-language').value; await persist(); updateProjectUI(); });
+const videoTexts = () => project?.segments.map((s, i) => ({ id: String(i), original: s.original })) ?? [];
+$('#online-video').addEventListener('click', () => { const target = project; if (!target) return; online.translate(videoTexts(), async values => { videoNarration.disable(); narrator.stop(); for (const value of values) target.segments[Number(value.id)].translated = value.translated; await saveProject(target); await refreshLibrary(); if (project?.id === target.id) { updateProjectUI(); renderTranscript(); updateCaptions(); } await learning.refresh(); }); });
+$('#analyze-video').addEventListener('click', () => { const target = project; if (!target) return; online.analyze(videoTexts(), async value => { target.analysis = value; await saveProject(target); if (project?.id === target.id) updateProjectUI(); await refreshLibrary(); }); });
 $('#cancel').addEventListener('click', () => cancelProcessing());
 $('#export').addEventListener('click', exportDialog);
 $('#search').addEventListener('input', renderTranscript);
@@ -523,7 +547,7 @@ $<HTMLInputElement>('#captions-input').addEventListener('change', async event =>
     if (project.segments.length && !confirm('Substituir os textos deste projeto pelas legendas importadas? Exporte um backup antes se precisar.')) return;
     project.segments = segments;
     updateProjectUI(); renderTranscript(); updateCaptions(); await persist();
-    toast('Legenda em inglês importada. Clique em Traduzir novamente para gerar o português.');
+    toast('Legenda original importada. Clique em Traduzir novamente para gerar o português.');
   } catch (error) { toast(error instanceof Error ? error.message : 'Não foi possível importar a legenda.'); }
   finally { input.value = ''; }
 });
@@ -552,7 +576,7 @@ $<HTMLInputElement>('#project-input').addEventListener('change', async event => 
 });
 
 $('#clear-data').addEventListener('click', () => {
-  if (processing || learning.busy) { toast('Cancele o processamento antes de apagar os dados.'); return; }
+  if (processing || learning.busy || online.busy) { toast('Cancele o processamento antes de apagar os dados.'); return; }
   dialog(`<h2>Apagar os dados locais?</h2><p>Isso remove todos os projetos, vídeos guardados, páginas PDF com suas imagens e modelos de IA deste navegador. O aplicativo continua instalado. Você precisará baixar os modelos novamente.</p><p>Exporte seus projetos antes. Esta ação não pode ser desfeita.</p><button class="button danger" id="confirm-clear">${icon('trash-2')}Apagar dados locais</button>`);
   $('#confirm-clear').addEventListener('click', async () => {
     try {
@@ -587,7 +611,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 }
 window.addEventListener('offline', () => toast('Você está offline. Vídeos locais continuam disponíveis; a IA precisa dos modelos completos em cache.'));
 window.addEventListener('beforeunload', event => {
-  if (processing || learning.busy) { event.preventDefault(); }
+  if (processing || learning.busy || online.busy) { event.preventDefault(); }
 });
 updateProjectUI();
 void refreshLibrary();

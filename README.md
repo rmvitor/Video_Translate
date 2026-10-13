@@ -1,6 +1,6 @@
 # Entrelinhas
 
-PWA para estudar vídeos e PDFs em inglês com tradução para português, imagens preservadas, projetos/subassuntos e narração local em PT-BR. O site é estático e pode ser publicado no GitHub Pages; arquivos e textos são processados no dispositivo.
+PWA para compreender vídeos e PDFs em outros idiomas, acompanhar projetos, preservar imagens e narrar em PT-BR. Inclui tradução local e tradução/análise opcional de texto com Gemini. O site é estático e pode ser publicado no GitHub Pages; arquivos e textos são processados no dispositivo.
 
 ## Desenvolvimento
 
@@ -12,7 +12,7 @@ ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci
 npm run dev
 ```
 
-No PowerShell, defina `$env:ONNXRUNTIME_NODE_INSTALL_CUDA="skip"` antes de `npm ci`. Não são necessárias chaves de API ou backend.
+No PowerShell, defina `$env:ONNXRUNTIME_NODE_INSTALL_CUDA="skip"` antes de `npm ci`. O uso local não precisa de chave ou backend. O Gemini é opcional e usa uma chave pessoal informada na interface, somente na memória da sessão.
 
 ```sh
 npm test
@@ -25,9 +25,9 @@ npm run preview
 ## Usar a ferramenta
 
 1. Adicione um vídeo (até 500 MB e 30 minutos). MP4 com H.264/AAC oferece maior compatibilidade entre navegadores. Outros formatos dependem do suporte do navegador para reprodução.
-2. Clique em **Transcrever e traduzir**. FFmpeg WASM extrai áudio mono a 16 kHz em um worker. Whisper transcreve o inglês com tempos; Marian traduz cada trecho para português. Os modelos quantizados executam na CPU via WebAssembly, sem exigir WebGPU ou cabeçalhos de isolamento incompatíveis com o Pages.
-3. Assista com legendas em português, inglês ou nos dois idiomas. A transcrição destaca o trecho atual; clique em um trecho para navegar no vídeo. Busque ou edite textos e tempos para corrigir nomes e termos da empresa.
-4. Exporte SRT, VTT, texto ou projeto JSON. O JSON inclui os textos e tempos dos dois idiomas, sem incluir o vídeo. Uma legenda SRT/VTT em inglês pode ser importada para tradução, evitando a etapa de transcrição.
+2. Clique em **Transcrever e traduzir**. FFmpeg WASM extrai áudio mono a 16 kHz em um worker. Whisper transcreve com tempos no idioma original selecionado; Marian traduz inglês para português e M2M100 traduz os demais idiomas. Os modelos de outros idiomas são maiores (a tradução pode baixar mais de 600 MB). Os modelos quantizados executam na CPU via WebAssembly, sem exigir WebGPU ou cabeçalhos de isolamento incompatíveis com o Pages.
+3. Assista com legendas em português, idioma original ou nos dois idiomas. A transcrição destaca o trecho atual; clique em um trecho para navegar no vídeo. Busque ou edite textos e tempos para corrigir nomes e termos da empresa.
+4. Exporte SRT, VTT, texto ou projeto JSON. O JSON inclui os textos e tempos dos dois idiomas, sem incluir o vídeo. Uma legenda SRT/VTT no idioma original pode ser importada para tradução, evitando a etapa de transcrição.
 5. Abra a **Minha biblioteca** para retomar um projeto. Sem uma cópia local, selecione novamente o vídeo original. Ative **Guardar vídeo neste dispositivo** para manter uma cópia no IndexedDB e assistir depois sem selecionar o arquivo novamente.
 
 A tradução automática pode conter erros e o modelo multilíngue pode produzir termos de português europeu. A ferramenta prefere o token de português brasileiro quando presente no vocabulário do modelo, e permite revisão manual para adequar o texto a PT-BR. Não considere a transcrição uma reprodução exata do treinamento sem revisão, especialmente em termos técnicos.
@@ -36,11 +36,25 @@ A tradução automática pode conter erros e o modelo multilíngue pode produzir
 
 Em **Projetos e assuntos**, crie um projeto com título e seus subassuntos. Abra um assunto e use **Adicionar PDF** ou **Adicionar vídeo** para associar o material diretamente. Os seletores de projeto e subassunto no player/leitor também permitem organizar materiais existentes. Renomear ou remover uma organização preserva seus PDFs e vídeos nas bibliotecas.
 
+Ao abrir um projeto, a lateral agrupa os materiais por subassunto e o painel ao lado exibe o vídeo ou a página PDF. Use **Anterior/Próximo**, marque cada material como concluído e acompanhe a barra de progresso. O último material aberto é retomado ao voltar ao projeto; notas, progresso e organização ficam neste navegador. Escolha um subassunto para associar os próximos arquivos adicionados. Isso serve para acompanhar o conteúdo e o trabalho de um projeto, sem exercícios de aprendizado de inglês.
+
 Em **Páginas PDF**, adicione um PDF com texto selecionável (até 50 MB e 100 páginas). PDF.js lê os parágrafos e imagens localmente. Clique em **Traduzir textos pendentes** para gerar o português com o mesmo modelo local utilizado nos vídeos. Traduções concluídas são guardadas progressivamente; após uma interrupção, o botão retoma os trechos pendentes.
 
-Cada página apresenta os textos e imagens na ordem aproximada de leitura. As imagens mantêm proporções próximas às do PDF e podem ser abertas em tamanho original. Elementos totalmente vazios ficam recolhidos. A opção **Ver página original e elementos gráficos** preserva a composição completa, inclusive gráficos vetoriais que não puderam ser separados. O leitor produz uma página de estudo, sem prometer uma reprodução exata do layout editorial do PDF.
+Cada página apresenta os textos e imagens na ordem aproximada de leitura. As imagens mantêm proporções próximas às do PDF e podem ser abertas em tamanho original. Elementos totalmente vazios ficam recolhidos. A opção **Ver página original e elementos gráficos** preserva a composição completa, inclusive gráficos vetoriais que não puderam ser separados. O leitor produz uma página de leitura, sem prometer uma reprodução exata do layout editorial do PDF.
 
 Revise um parágrafo pelo botão de edição. **Exportar página HTML** gera um arquivo autônomo com os textos e imagens incorporados, que pode ser aberto sem internet. Esse arquivo contém conteúdo interno: guarde-o em um local apropriado e não o envie ao GitHub. O PDF original não é armazenado nem enviado; os textos e imagens extraídos ficam no IndexedDB local para acesso posterior. PDFs escaneados sem camada de texto mantêm as imagens, mas OCR não está incluído nesta versão.
+
+## Gemini e aparência
+
+Em **Preferências**, escolha tema claro, escuro ou seguindo o sistema e a cor do aplicativo. As preferências ficam no `localStorage`, separadas da biblioteca. A cor dos textos e dos botões se ajusta para manter contraste legível; as imagens originais não são invertidas no tema escuro.
+
+Para usar **Gemini 2.5 Flash**, informe sua chave pessoal em Preferências ou no diálogo de tradução. Ela fica somente na memória da aba/sessão, não é salva no IndexedDB, `localStorage`, exports ou código público. Recarregar o aplicativo remove a chave. O serviço depende da sua conexão, chave, permissões e cota.
+
+No vídeo, escolha **Só transcrever localmente** se quiser traduzir com Gemini, evitando o download do modelo local de tradução. A extração de áudio e a transcrição continuam no dispositivo. Em um vídeo com legendas importadas, o texto já está disponível. No PDF, basta importar para extrair texto e imagens localmente.
+
+Use **Traduzir texto com Gemini** ou **Analisar texto com Gemini** no material aberto. Revise a lista, marque os trechos necessários e autorize o envio. São enviados somente esses textos ao endpoint `generativelanguage.googleapis.com`, sem nome de arquivo, metadados do projeto, mídia ou imagens. Cada envio aceita até 100 trechos e 16.000 caracteres; divida materiais longos usando a seleção de trechos. A chave segue em cabeçalho HTTPS, sem aparecer na URL.
+
+O resultado só é salvo depois de **Aplicar traduções revisadas** ou **Salvar análise neste material**. As traduções mantêm os tempos das legendas; a análise apresenta resumo, pontos principais e dúvidas a verificar. Erros de cota, conexão ou formato de resposta preservam os textos existentes. Texto selecionado deixa o dispositivo quando autorizado e passa a ser tratado pelo Google conforme os termos do serviço. A narração continua exclusivamente local, inclusive quando a tradução veio do Gemini.
 
 ## Narração em PT-BR
 
@@ -52,8 +66,8 @@ São aceitas somente vozes que o navegador informa como **locais** e com idioma 
 
 ## Privacidade e armazenamento
 
-- O app não tem servidor de upload, analytics ou credenciais. Os vídeos são reproduzidos com URLs `blob:`. Vídeo e áudio não são enviados para serviços de IA.
-- A interface e os runtimes são servidos pelo Pages. Os modelos de `Xenova/whisper-tiny.en` e `Xenova/opus-mt-en-ROMANCE` são baixados do Hugging Face via HTTPS. Esses downloads são requisições GET sem o conteúdo do vídeo. O provedor de download pode observar os metadados usuais de conexão, como IP e modelo solicitado.
+- O app não tem servidor de upload ou analytics. A chave pessoal do Gemini, se informada, existe somente na memória da sessão. Os vídeos são reproduzidos com URLs `blob:`. Vídeo e áudio não são enviados para serviços de IA.
+- A interface e os runtimes são servidos pelo Pages. Os modelos de `Xenova/whisper-tiny.en`, `Xenova/whisper-tiny`, `Xenova/opus-mt-en-ROMANCE` e `Xenova/m2m100_418M` são baixados do Hugging Face via HTTPS. Esses downloads são requisições GET sem o conteúdo do vídeo. O provedor de download pode observar os metadados usuais de conexão, como IP e modelo solicitado.
 - As transcrições, traduções, projetos, subassuntos e imagens das páginas PDF são salvos no IndexedDB deste navegador. O vídeo fica apenas na sessão por padrão; a cópia persistente exige ativar a opção na tela. A atualização do banco preserva os vídeos e legendas criados antes da versão 0.2.
 - O app não criptografa a biblioteca. Use um perfil confiável, principalmente para conteúdo interno. Sites no mesmo domínio/origem compartilham os limites de segurança de armazenamento do navegador; tenha cuidado com outros projetos publicados no mesmo domínio do Pages.
 - Não há sincronização entre celulares e computadores. O navegador pode remover dados por pressão de armazenamento; modo privado, reinstalação e limpeza do site podem apagar a biblioteca. Mantenha os arquivos originais e backups JSON em locais adequados para dados internos.
@@ -107,11 +121,9 @@ PDF_INPUT=/caminho/privado/documento.pdf npm run test:pdf
 
 Esse teste exige acesso aos modelos, espaço e memória. Verifica a extração, transcrição, tradução, tempos válidos e textos distintos nos dois idiomas, sem imprimir o conteúdo privado. Em seguida desativa a conexão e processa o vídeo inteiro novamente com os modelos em cache. No runner de nuvem, usa `curl` para transportar somente os downloads GET pelo proxy HTTPS configurado, mantendo a verificação TLS; a extração e a inferência executam nos workers WebAssembly reais do Chromium. Em um navegador do usuário, o aplicativo baixa os modelos diretamente, sem essa adaptação de testes.
 
-O build, seis testes unitários e quatro testes funcionais em Chromium passaram. O vídeo de exemplo enviado (30,8 segundos) foi processado por FFmpeg, Whisper e Marian no navegador, produzindo cinco trechos traduzidos com tempos e uma faixa de legendas. O processamento completo também passou com a internet desativada e sem adaptação de transporte, usando o cache real do navegador. A interface foi verificada em viewport mobile, sem cortes no player ou rolagem horizontal; não houve teste em hardware mobile ou publicação remota.
+Na versão 0.3, build, 11 testes unitários e 12 testes funcionais validam organização em lateral, navegação entre vídeo/PDF, retomada, progresso, notas, tema/cor, persistência e privacidade dos pedidos online. A integração Gemini é testada com respostas controladas e uma chave fictícia; nenhuma chamada real com chave pessoal foi feita neste ambiente. A qualidade e disponibilidade do serviço devem ser conferidas usando a chave no aplicativo.
 
-O proxy inicialmente bloqueou o Hugging Face e passou a permitir os downloads após a configuração de rede. Os destinos necessários estão registrados no rascunho do ambiente (`huggingface.co`, `*.hf.co`, `*.xethub.hf.co`).
-
-Na versão 0.2, o PDF de exemplo de duas páginas foi extraído com sete imagens e 17 blocos de texto, traduzido com o modelo real e reaberto offline. O fluxo de vídeo também foi revalidado com transcrição/tradução reais e processamento completo offline. No Chromium deste ambiente não há voz local PT-BR instalada: os controles de narração foram testados com simulação de voz, e a reprodução audível depende de uma voz local disponível no dispositivo do usuário.
+O vídeo de exemplo foi revalidado com FFmpeg, Whisper e Marian reais no Chromium, produzindo cinco trechos traduzidos, seguido de processamento completo offline com os modelos em cache. Uma tradução sintética de espanhol para português também passou com M2M100 real; no runner, os pesos grandes foram transportados por um servidor local de testes para contornar o limite de tamanho do canal DevTools, sem alterar o aplicativo publicado. O PDF de exemplo conserva suas duas páginas, seis imagens extraídas (além da composição preservada nas prévias originais) e 17 blocos de texto. Os testes de voz usam simulação controlada; a reprodução audível depende de uma voz local PT-BR instalada. O layout mobile foi verificado no Chromium, sem teste em hardware mobile.
 
 ## Estrutura
 
@@ -121,6 +133,8 @@ Na versão 0.2, o PDF de exemplo de duas páginas foi extraído com sete imagens
 - `src/learning.ts`: projetos, subassuntos, biblioteca de PDFs e leitor de páginas.
 - `src/pdf.ts`: extração local de textos/imagens e preservação das páginas originais com PDF.js.
 - `src/narration.ts`: leitura em PT-BR usando somente vozes locais e sincronização com o vídeo.
+- `src/online.ts` e `src/cloud-protocol.mjs`: seleção e revisão de textos, pedidos Gemini e validação de respostas.
+- `src/appearance.ts` e `src/preferences.mjs`: preferências e contraste de cores.
 - `src/subtitles.mjs`: importação/exportação e validação de tempos.
 - `scripts/build-service-worker.mjs`: cache versionado pelo conteúdo do build e limitado ao escopo do app.
 - `tests/`: testes unitários e funcionais em Chromium.

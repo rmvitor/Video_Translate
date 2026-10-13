@@ -2,7 +2,7 @@
   "id": "/Video_Translate/",
   "name": "Entrelinhas — Vídeos e páginas em PT-BR",
   "short_name": "Entrelinhas",
-  "description": "Vídeos e PDFs locais com tradução, projetos de estudo e narração em português.",
+  "description": "Vídeos e PDFs locais com tradução, acompanhamento de projetos e narração em português.",
   "lang": "pt-BR",
   "start_url": "./",
   "scope": "./",
