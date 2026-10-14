@@ -17,9 +17,13 @@ createServer(async (req, res) => {
       const stream=createReadStream(path);stream.on('error',()=>res.destroy());res.once('close',()=>stream.destroy());stream.pipe(res);return;
     }
     if (!url.pathname.startsWith('/Video_Translate/')) { res.writeHead(404); res.end(); return; }
-    const path = resolve(root, decodeURIComponent(url.pathname.slice('/Video_Translate/'.length)) || 'index.html');
+    let path = resolve(root, decodeURIComponent(url.pathname.slice('/Video_Translate/'.length)) || 'index.html');
     if (!path.startsWith(root + '/')) { res.writeHead(403); res.end(); return; }
-    const info = await stat(path);
+    let info = await stat(path);
+    if(info.isDirectory()){
+      if(!url.pathname.endsWith('/')){res.writeHead(301,{Location:url.pathname+'/'+url.search});res.end();return;}
+      path=resolve(path,'index.html');info=await stat(path);
+    }
     if (!info.isFile()) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'Content-Type': types[extname(path)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(await readFile(path));

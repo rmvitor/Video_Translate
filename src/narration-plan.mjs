@@ -38,7 +38,7 @@ export function pronunciationRuns(text, original = '', terms = '', sourceLanguag
 }
 
 /** @param {ReadingItem[]} items @returns {Chunk[]} */
-export function buildNarrationPlan(items, mode = 'mixed', terms = '') {
+export function buildNarrationPlan(items, mode = 'pt-BR', terms = '') {
   /** @type {Chunk[]} */
   const chunks=[];let total=0;
   for(const item of items){
@@ -66,4 +66,16 @@ export function buildNarrationPlan(items, mode = 'mixed', terms = '') {
 export function playbackRateForVideo(duration, sourceDuration, requested = 1, videoRate = 1) {
   const fit=duration>0&&sourceDuration>0?duration/sourceDuration:1;
   return Math.min(2,Math.max(.6,requested*fit*Math.max(.25,videoRate)));
+}
+
+// A cue can have several language runs; its first audio mark defines its start.
+export function narrationPosition(segments, marks, duration, time) {
+  const starts = new Map();
+  for (const mark of marks) if (!starts.has(mark.id)) starts.set(mark.id, mark.start);
+  const spoken = segments.map((segment,index)=>({...segment,id:String(index),audioStart:starts.get(String(index))})).filter(segment=>segment.audioStart!==undefined);
+  const index = spoken.findIndex(segment=>segment.end>time);
+  if (index<0) return {offset:duration,startsAt:time,finished:true};
+  const cue=spoken[index],end=spoken[index+1]?.audioStart??duration;
+  const fraction=Math.min(1,Math.max(0,(time-cue.start)/Math.max(.001,cue.end-cue.start)));
+  return {offset:cue.audioStart+(end-cue.audioStart)*fraction,startsAt:Math.max(time,cue.start),finished:false};
 }

@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
@@ -10,6 +10,12 @@ async function walk(directory, prefix = '') {
     else if (item.name !== 'sw.js') files.push(path);
   }
   return files;
+}
+// Pages serves real directories; these public Auth routes need no SPA rewrite.
+const index=await readFile('dist/index.html','utf8');
+for(const route of ['recuperar-senha','nova-senha','confirmar-email']){
+  await mkdir(join('dist',route),{recursive:true});
+  await writeFile(join('dist',route,'index.html'),index.replace('<head>','<head>\n    <base href="../" />'));
 }
 const files = (await walk('dist')).sort();
 const hash = createHash('sha256');
@@ -38,7 +44,7 @@ self.addEventListener('fetch', event => {
     const cache = await caches.open(CACHE);
     if (event.request.mode === 'navigate') {
       try { return await fetch(event.request); }
-      catch { return await cache.match(new URL('index.html', self.registration.scope).href) || Response.error(); }
+      catch { return await cache.match(new URL('index.html', url.href).href) || await cache.match(new URL('index.html', self.registration.scope).href) || Response.error(); }
     }
     return await cache.match(event.request) || fetch(event.request);
   })());

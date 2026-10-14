@@ -20,6 +20,8 @@ O build distribui bibliotecas e runtimes instalados pelo npm. Preserve as licen�
 | Voz neural inglesa LJSpeech high | revisão c10ece1aade47bb51c153c893d14e5bf8e5b7117 | Dataset em domínio público, modelo treinado do zero conforme MODEL_CARD: https://huggingface.co/rhasspy/piper-voices/blob/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/ljspeech/high/MODEL_CARD · https://keithito.com/LJ-Speech-Dataset/ |
 | whisper-tiny.en (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/whisper-tiny.en |
 | whisper-tiny (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/whisper-tiny |
+| whisper-base.en / whisper-base (conversão Xenova, padrão reforçado) | resolvido pelo Hugging Face | Model cards: https://huggingface.co/Xenova/whisper-base.en e https://huggingface.co/Xenova/whisper-base · modelos OpenAI Whisper MIT |
+| whisper-small.en / whisper-small (conversão Xenova, maior precisão) | resolvido pelo Hugging Face | Model cards: https://huggingface.co/Xenova/whisper-small.en e https://huggingface.co/Xenova/whisper-small · modelos OpenAI Whisper MIT |
 | m2m100_418M (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/m2m100_418M · modelo original: https://huggingface.co/facebook/m2m100_418M |
 | opus-mt-en-ROMANCE (conversão Xenova) | resolvido pelo Hugging Face | Model card: https://huggingface.co/Xenova/opus-mt-en-ROMANCE |
 

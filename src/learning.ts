@@ -57,17 +57,18 @@ export function createLearningArea(options: Options) {
   const portalNodes = ['workspace-view', 'pdf-reader', 'pdf-progress', 'pdf-error'].map(id => {
     const node = $(`#${id}`), home = document.createComment(`${id}-home`); node.before(home); return { node, home };
   });
-  function restorePortals() { for (const { node, home } of portalNodes) { home.after(node); if (node.id === 'workspace-view') node.hidden = options.currentView() !== 'workspace'; } }
   function mountMaterial() {
     const material = options.currentView() === 'library' ? libraryMaterial : options.currentView() === 'collections' ? activeMaterial : undefined;
-    if (!material) return;
-    const outlet = $(options.currentView() === 'library' ? '#library-outlet' : '#project-outlet'); if (!outlet) return;
-    if (material.kind === 'pdf' && current?.id !== material.id) { current = documents.find(value => value.id === material.id); renderReader(); }
-    const ids = material.kind === 'video' ? ['workspace-view'] : ['pdf-progress', 'pdf-error', 'pdf-reader'];
-    for (const { node } of portalNodes) if (ids.includes(node.id)) { outlet.append(node); if (node.id === 'workspace-view') node.hidden = false; }
+    const outlet = material ? $(options.currentView() === 'library' ? '#library-outlet' : '#project-outlet') : null;
+    if (material?.kind === 'pdf' && current?.id !== material.id) { current = documents.find(value => value.id === material.id); renderReader(); }
+    const ids = !material ? [] : material.kind === 'video' ? ['workspace-view'] : ['pdf-progress', 'pdf-error', 'pdf-reader'];
+    for (const { node, home } of portalNodes) {
+      if(outlet && ids.includes(node.id)){if(node.parentNode!==outlet)outlet.append(node);}
+      else if(home.nextSibling!==node)home.after(node);
+      if(node.id==='workspace-view')node.hidden=options.currentView()!=='workspace'&&!(outlet&&material?.kind==='video');
+    }
   }
   function syncView() {
-    restorePortals();
     $('#library-browser').hidden = Boolean(libraryMaterial);
     $('#library-reader').hidden = !libraryMaterial;
     for (const kind of ['pdf', 'video'] as const) {
@@ -122,13 +123,26 @@ export function createLearningArea(options: Options) {
     const collection = collections.find(c => c.id === value.collectionId);
     return `<label>Projeto<select id="${prefix}-collection" aria-label="Projeto do ${prefix === 'pdf' ? 'PDF' : 'vídeo'}"><option value="">Sem projeto</option>${collections.map(c => `<option value="${c.id}" ${c.id === value.collectionId ? 'selected' : ''}>${esc(c.title)}</option>`).join('')}</select></label><label>Subassunto<select id="${prefix}-subject" aria-label="Subassunto do ${prefix === 'pdf' ? 'PDF' : 'vídeo'}" ${!collection ? 'disabled' : ''}><option value="">Sem subassunto</option>${(collection?.subjects ?? []).map(s => `<option value="${s.id}" ${s.id === value.subjectId ? 'selected' : ''}>${esc(s.title)}</option>`).join('')}</select></label>`;
   }
+  function syncSelect(select:HTMLSelectElement,choices:{value:string;label:string}[],value:string){
+    const key=JSON.stringify(choices);
+    if(select.dataset.choices!==key){select.replaceChildren(...choices.map(choice=>new Option(choice.label,choice.value)));select.dataset.choices=key;}
+    if(select.value!==value)select.value=value;
+  }
   function renderVideoOrganization() {
     const video = options.currentVideo();
-    $('#video-organization').innerHTML = video ? selectors(video, 'video') : '';
+    if(video){
+      if(!$('#video-collection'))$('#video-organization').innerHTML=selectors(video,'video');
+      syncSelect($<HTMLSelectElement>('#video-collection'),[{value:'',label:'Sem projeto'},...collections.map(c=>({value:c.id,label:c.title}))],video.collectionId||'');
+      syncSelect($<HTMLSelectElement>('#video-subject'),[{value:'',label:'Sem subassunto'},...(collections.find(c=>c.id===video.collectionId)?.subjects||[]).map(s=>({value:s.id,label:s.title}))],video.subjectId||'');
+    }else $('#video-organization').replaceChildren();
     $('#video-organization').hidden = !video;
     const terms=$<HTMLTextAreaElement>('[data-english-terms=video]');if(document.activeElement!==terms)terms.value=video?.pronunciationTerms||'';terms.disabled=!video;
-    $('#video-result-links')?.remove();
-    if (video) $('.player-info').insertAdjacentHTML('afterend', `<div id="video-result-links" class="result-links"><span>Veja a tradução:</span><button class="text-button" id="view-video-library">Na biblioteca</button>${video.collectionId ? '<button class="text-button" id="view-video-project">No projeto</button>' : ''}</div>`);
+    if(!video)$('#video-result-links')?.remove();
+    else {
+      if(!$('#video-result-links'))$('.player-info').insertAdjacentHTML('afterend','<div id="video-result-links" class="result-links"></div>');
+      const links=$('#video-result-links'),markup=`<span>Veja a tradução:</span><button class="text-button" id="view-video-library">Na biblioteca</button>${video.collectionId ? '<button class="text-button" id="view-video-project">No projeto</button>' : ''}`;
+      if(links.dataset.markup!==markup){links.innerHTML=markup;links.dataset.markup=markup;}
+    }
     $('#video-organization').querySelectorAll('select').forEach(select => select.toggleAttribute('disabled', busy || options.isBusy() || (select.id === 'video-subject' && !video?.collectionId)));
   }
   async function refresh() {
@@ -146,11 +160,11 @@ export function createLearningArea(options: Options) {
   function renderCollections() {
     const content=$('#collection-content'),previous=content.dataset.projectId,notes=content.querySelector<HTMLDetailsElement>('.project-notes'),draft=content.querySelector<HTMLTextAreaElement>('#project-notes');
     if(previous&&notes&&draft)notesUI.set(previous,{open:notes.open,draft:draft.value});
-    restorePortals();
     const collection = selected();
     content.dataset.projectId=collection?.id||'';
     $('#collections-home-heading').hidden=Boolean(collection);$('#collections-view').classList.toggle('project-open',Boolean(collection));
     if (!collection) {
+      for(const {node,home} of portalNodes)if(content.contains(node))home.after(node);
       collectionMarkupKey = '';
       $('#collection-content').innerHTML = collections.length ? `<div class="collection-grid">${collections.map(c => {
         const items = [...videos, ...documents].filter(v => v.collectionId === c.id), done = items.filter(v => v.completedAt).length;
@@ -167,7 +181,20 @@ export function createLearningArea(options: Options) {
       collectionMarkupKey = markupKey;
       const completed = materials.filter(m => m.value.completedAt).length;
       const groups = [...collection.subjects, { id: '__none', title: 'Sem subassunto' }];
-      $('#collection-content').innerHTML = `<nav class="project-tabs" aria-label="Navegação de projetos"><button class="text-button back-button" id="back-collections">${icon('arrow-left')}Todos os projetos</button><span aria-current="page">${esc(collection.title)}</span></nav><div class="collection-header"><div><h2>${esc(collection.title)}</h2><p>${completed}/${materials.length} materiais concluídos neste dispositivo</p><progress max="${materials.length || 1}" value="${completed}" aria-label="Progresso do projeto"></progress></div><div class="inline-actions"><button class="icon-button" id="rename-collection" aria-label="Renomear projeto">${icon('pencil')}</button></div></div><div class="project-layout"><aside class="project-outline" aria-label="Materiais do projeto"><h3>Acompanhamento</h3>${groups.map(group => `<section class="outline-topic"><button data-subject="${group.id}" class="topic-title ${selectedSubject === group.id ? 'active' : ''}">${esc(group.title)}</button><div class="material-list">${materials.filter(m => group.id === '__none' ? !collection.subjects.some(subject => subject.id === m.value.subjectId) : m.value.subjectId === group.id).map(m => materialCard(m.value, m.kind)).join('') || '<p class="topic-empty">Sem materiais</p>'}</div></section>`).join('')}<button class="text-button" id="new-subject">${icon('plus')}Novo subassunto</button>${selectedSubject && selectedSubject !== '__none' ? '<div class="topic-actions"><button class="text-button" id="rename-subject">Renomear subassunto</button><button class="text-button" id="remove-subject">Remover subassunto</button></div>' : ''}<div class="material-actions"><button class="button primary" id="collection-pdf">${icon('plus')}Adicionar PDF</button><button class="button secondary" id="collection-video">${icon('plus')}Adicionar vídeo</button></div><details class="project-notes"><summary>Notas do projeto</summary><label class="field-label">Anotações locais<textarea id="project-notes" rows="5" maxlength="20000">${esc(collection.notes)}</textarea></label><button class="button secondary" id="save-project-notes">Salvar notas</button></details></aside><section class="project-stage" aria-label="Conteúdo do projeto"><div class="course-navigation"><button class="text-button" id="previous-material" ${index <= 0 ? 'disabled' : ''}>${icon('arrow-left')}Anterior</button><span>${active ? `${index + 1} de ${materials.length}` : 'Selecione um material'}</span><button class="text-button" id="next-material" ${index < 0 || index >= materials.length - 1 ? 'disabled' : ''}>Próximo${icon('chevron-right')}</button>${active ? `<button class="button ${active.value.completedAt ? 'secondary' : 'primary'}" id="toggle-completed">${icon('check')}${active.value.completedAt ? 'Marcar como pendente' : 'Marcar como concluído'}</button>` : ''}</div><div id="project-outlet">${active ? '' : '<div class="no-results">Abra um material na lateral para acompanhar o projeto. Selecione um subassunto antes de adicionar novos arquivos.</div>'}</div></section></div>`;
+      const next=document.createElement('div');
+      next.innerHTML = `<nav class="project-tabs" aria-label="Navegação de projetos"><button class="text-button back-button" id="back-collections">${icon('arrow-left')}Todos os projetos</button><span aria-current="page">${esc(collection.title)}</span></nav><div class="collection-header"><div><h2>${esc(collection.title)}</h2><p>${completed}/${materials.length} materiais concluídos neste dispositivo</p><progress max="${materials.length || 1}" value="${completed}" aria-label="Progresso do projeto"></progress></div><div class="inline-actions"><button class="icon-button" id="rename-collection" aria-label="Renomear projeto">${icon('pencil')}</button></div></div><div class="project-layout"><aside class="project-outline" aria-label="Materiais do projeto"><h3>Acompanhamento</h3>${groups.map(group => `<section class="outline-topic"><button data-subject="${group.id}" class="topic-title ${selectedSubject === group.id ? 'active' : ''}">${esc(group.title)}</button><div class="material-list">${materials.filter(m => group.id === '__none' ? !collection.subjects.some(subject => subject.id === m.value.subjectId) : m.value.subjectId === group.id).map(m => materialCard(m.value, m.kind)).join('') || '<p class="topic-empty">Sem materiais</p>'}</div></section>`).join('')}<button class="text-button" id="new-subject">${icon('plus')}Novo subassunto</button>${selectedSubject && selectedSubject !== '__none' ? '<div class="topic-actions"><button class="text-button" id="rename-subject">Renomear subassunto</button><button class="text-button" id="remove-subject">Remover subassunto</button></div>' : ''}<div class="material-actions"><button class="button primary" id="collection-pdf">${icon('plus')}Adicionar PDF</button><button class="button secondary" id="collection-video">${icon('plus')}Adicionar vídeo</button></div><details class="project-notes"><summary>Notas do projeto</summary><label class="field-label">Anotações locais<textarea id="project-notes" rows="5" maxlength="20000">${esc(collection.notes)}</textarea></label><button class="button secondary" id="save-project-notes">Salvar notas</button></details></aside><section class="project-stage" aria-label="Conteúdo do projeto"><div class="course-navigation"><button class="text-button" id="previous-material" ${index <= 0 ? 'disabled' : ''}>${icon('arrow-left')}Anterior</button><span>${active ? `${index + 1} de ${materials.length}` : 'Selecione um material'}</span><button class="text-button" id="next-material" ${index < 0 || index >= materials.length - 1 ? 'disabled' : ''}>Próximo${icon('chevron-right')}</button>${active ? `<button class="button ${active.value.completedAt ? 'secondary' : 'primary'}" id="toggle-completed">${icon('check')}${active.value.completedAt ? 'Marcar como pendente' : 'Marcar como concluído'}</button>` : ''}</div><div id="project-outlet">${active ? '' : '<div class="no-results">Abra um material na lateral para acompanhar o projeto. Selecione um subassunto antes de adicionar novos arquivos.</div>'}</div></section></div>`;
+      // Update navigation around the reader without detaching a playing video.
+      const stage=content.querySelector('.project-stage');
+      if(previous===collection.id&&stage){
+        for(const selector of ['.project-tabs','.collection-header','.project-outline'])content.querySelector(selector)!.replaceWith(next.querySelector(selector)!);
+        stage.querySelector('.course-navigation')!.replaceWith(next.querySelector('.course-navigation')!);
+        mountMaterial();
+        if(active)$('#project-outlet .no-results')?.remove();
+        else $('#project-outlet').innerHTML=next.querySelector('#project-outlet')!.innerHTML;
+      }else{
+        for(const {node,home} of portalNodes)if(content.contains(node))home.after(node);
+        content.replaceChildren(...next.childNodes);
+      }
       const state=notesUI.get(collection.id);if(state){$<HTMLDetailsElement>('.project-notes').open=state.open;$<HTMLTextAreaElement>('#project-notes').value=state.draft;}
       mountMaterial();
     }
@@ -200,17 +227,21 @@ export function createLearningArea(options: Options) {
   function updateVoiceControls() {
     const narrator = options.narrator;
     document.querySelectorAll<HTMLSelectElement>('[data-voice-select]').forEach(select => {
-      select.innerHTML = narrator.voices.length ? narrator.voices.map(v => `<option value="${esc(v.voiceURI)}" ${v.voiceURI === narrator.voice?.voiceURI ? 'selected' : ''}>${esc(v.name)}</option>`).join('') : '<option value="">Nenhuma voz local PT-BR instalada</option>';
+      // A progress notification or newly discovered system voice must not close
+      // the native picker while the user is choosing an option.
+      if(document.activeElement!==select)syncSelect(select,narrator.voices.map(v=>({value:v.voiceURI,label:v.name})),narrator.voice.voiceURI);
     });
-    document.querySelectorAll<HTMLSelectElement>('[data-narration-language]').forEach(select=>{select.value=narrator.language;});
+    document.querySelectorAll<HTMLSelectElement>('[data-narration-language]').forEach(select=>{if(document.activeElement!==select&&select.value!==narrator.language)select.value=narrator.language;});
     const read=$('#read-pdf-label');if(read)read.textContent=narrator.language==='en-US'?'Ler em inglês':narrator.language==='mixed'?'Ler em PT-BR + inglês':'Ler em PT-BR';
     $('#video-narration-label').textContent=narrator.language==='en-US'?'Narrar em inglês':narrator.language==='mixed'?'Narrar em PT-BR + inglês':'Narrar em PT-BR';
-    document.querySelectorAll<HTMLSelectElement>('[data-voice-rate]').forEach(s => { s.value = String(narrator.rate); });
+    document.querySelectorAll<HTMLSelectElement>('[data-voice-rate]').forEach(s => {if(document.activeElement!==s&&s.value!==String(narrator.rate))s.value=String(narrator.rate);});
     document.querySelectorAll<HTMLElement>('[data-voice-status]').forEach(element=>{element.textContent=narrator.status;});
+    document.querySelectorAll<HTMLButtonElement>('[data-prepare-voice]').forEach(button=>{button.disabled=narrator.preparing||narrator.state!=='idle';});
     const pause = $('#pause-reading'); if (pause) { (pause as HTMLButtonElement).disabled = narrator.state === 'idle'; pause.title = narrator.state === 'paused' ? 'Continuar narração' : 'Pausar narração'; }
     const stop = $('#stop-reading'); if (stop) (stop as HTMLButtonElement).disabled = narrator.state === 'idle';
   }
   options.narrator.subscribe(updateVoiceControls);
+  document.addEventListener('focusout',event=>{if((event.target as HTMLElement).matches('[data-voice-select], [data-narration-language], [data-voice-rate]'))updateVoiceControls();});
 
   async function storeCurrent() {
     if (!current) return;
@@ -298,7 +329,7 @@ export function createLearningArea(options: Options) {
         await saveQueue; setBusy(false); await refresh(); renderReader(); if (options.currentView() === 'documents') await openLibraryMaterial(target.id, 'pdf'); options.toast('Página traduzida. Você pode revisar os textos e ouvir a narração em PT-BR.');
       }
     };
-    pdfWorker.postMessage({ sourceLanguage: target.sourceLanguage || 'en', blocks: blocks.map(b => ({ id: b.id, text: b.original })), baseURL: new URL(import.meta.env.BASE_URL, location.href).href });
+    pdfWorker.postMessage({ sourceLanguage: target.sourceLanguage || 'en', blocks: blocks.map(b => ({ id: b.id, text: b.original })), baseURL: new URL(import.meta.env.BASE_URL, document.baseURI).href });
   }
   function titleForm(title: string, value: string, action: (title: string) => Promise<void>) {
     options.dialog(`<h2>${esc(title)}</h2><form id="learning-title-form"><label class="field-label">Título<input id="learning-title" maxlength="200" required value="${esc(value)}" /></label><button class="button primary" type="submit">${icon('check')}Salvar</button></form>`);
@@ -391,7 +422,7 @@ export function createLearningArea(options: Options) {
         });
       }
       if(button.hasAttribute('data-prepare-voice')&&guard()){
-        button.disabled=true;try{await options.narrator.prepare();options.toast('Voz natural pronta para uso local.');}catch(error){options.toast(error instanceof Error?error.message:'Não foi possível preparar a voz.');}finally{button.disabled=false;}
+        try{await options.narrator.prepare();options.toast('Voz natural pronta para uso local.');}catch(error){options.toast(error instanceof Error?error.message:'Não foi possível preparar a voz.');}finally{updateVoiceControls();}
       }
       if (button.dataset.collection && guard()) { selectedCollection = button.dataset.collection; selectedSubject = ''; activeMaterial = undefined; const materials = orderedMaterials(); const resume = materials.find(m => m.value.id === selected()?.lastMaterialId) ?? materials[0]; if (resume) await openMaterial(resume.value.id, resume.kind); else renderCollections(); }
       if (button.dataset.subject !== undefined) { selectedSubject = button.dataset.subject; renderCollections(); }
@@ -487,7 +518,7 @@ export function createLearningArea(options: Options) {
   return {
     get busy() { return busy; },
     get inProject() { return options.currentView() === 'collections' && Boolean(activeMaterial); },
-    prepareView: () => restorePortals(), syncView, openLibraryMaterial, showLibrary: () => libraryList(libraryTab),
+    syncView, openLibraryMaterial, showLibrary: () => libraryList(libraryTab),
     showProjects: async () => { if (!guard()) return; if (selectedCollection && activeMaterial) await openMaterial(activeMaterial.id, activeMaterial.kind); else options.changeView('collections'); },
     showVideoResult: async (id: string) => { const video = options.currentVideo(); if (video?.collectionId) { selectedCollection = video.collectionId; await openMaterial(id, 'video'); } else await openLibraryMaterial(id, 'video'); },
     showVideoInProject: async (id: string) => { const video = options.currentVideo(); if (!video?.collectionId) return; selectedCollection = video.collectionId; await openMaterial(id, 'video'); },

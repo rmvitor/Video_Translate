@@ -60,7 +60,7 @@ self.onmessage=event=>{
         const selected:Language[]=languages??['pt-BR'];
         if(!Array.isArray(selected)||selected.length>2||selected.some(language=>!Object.hasOwn(VOICES,language)))throw new Error('Idioma de voz inválido.');
         for(const language of selected)await prepare(baseURL,language);
-        progress('Vozes prontas. Narração gerada neste dispositivo.');self.postMessage({id,type:'ready'});return;
+        self.postMessage({id,type:'ready'});return;
       }
       const parts:Int16Array[]=[],marks:{id:string;start:number}[]=[];let length=0;
       for(const [index,chunk] of chunks.entries()){
@@ -71,7 +71,7 @@ self.onmessage=event=>{
         if(length*2>128*1024*1024)throw new Error('Narração muito longa para uma única leitura. Leia uma parte por vez.');
       }
       const audio=encodeWav(parts,22050);
-      progress('Narração contínua pronta.');self.postMessage({id,type:'audio',audio,duration:length/22050,marks},[audio]);
+      self.postMessage({id,type:'audio',audio,duration:length/22050,marks},[audio]);
     }catch(error){self.postMessage({id,type:'error',message:error instanceof Error?error.message:'Não foi possível gerar as vozes neste dispositivo.'});}
   });
 };

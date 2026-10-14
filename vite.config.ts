@@ -4,14 +4,18 @@ import { publicAccessConfig } from './src/access-protocol.mjs';
 export default defineConfig(({mode}) => {
   const env=loadEnv(mode,process.cwd(),'SUPABASE_');
   const fromFile=JSON.parse(readFileSync('public/access-config.json','utf8'));
-  const config=publicAccessConfig(env.SUPABASE_URL||env.SUPABASE_PUBLISHABLE_KEY?{url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY}:fromFile);
+  const config=publicAccessConfig(env.SUPABASE_URL||env.SUPABASE_PUBLISHABLE_KEY?{url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY,passwordPolicy:fromFile.passwordPolicy}:fromFile);
   if((env.SUPABASE_URL||env.SUPABASE_PUBLISHABLE_KEY)&&!config)throw new Error('Configure SUPABASE_URL e SUPABASE_PUBLISHABLE_KEY juntos.');
   const json=JSON.stringify(config||{url:'',publishableKey:''})+'\n';
   return {
     base:'./',
     plugins:[{
       name:'public-access-config',
-      transformIndexHtml:html=>config?html.replace('https://*.supabase.co;',`${config.url};`):html,
+      transformIndexHtml:(html,context)=>{
+        if(config)html=html.replace('https://*.supabase.co;',`${config.url};`);
+        if(/\/(recuperar-senha|nova-senha|confirmar-email)\/?$/.test((context.originalUrl||context.path).split('?')[0]))html=html.replace('<head>','<head>\n    <base href="../" />');
+        return html;
+      },
       configureServer(server){server.middlewares.use('/access-config.json',(_req,res)=>{res.setHeader('Content-Type','application/json');res.end(json);});},
       writeBundle(){writeFileSync('dist/access-config.json',json);},
     }],

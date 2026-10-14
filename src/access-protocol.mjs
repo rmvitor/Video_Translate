@@ -1,3 +1,4 @@
+import { passwordPolicy } from './password-policy.mjs';
 export const ACCESS_LEASE_SECONDS = 65;
 export function publicAccessConfig(value) {
   if (!value?.url || !value?.publishableKey) return null;
@@ -9,7 +10,7 @@ export function publicAccessConfig(value) {
     try { const payload = JSON.parse(atob(key.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); if (payload.role !== 'anon') throw new Error(); }
     catch { throw new Error('Use somente a chave pública publishable/anon.'); }
   }
-  return { url: url.origin, publishableKey: key };
+  return { url: url.origin, publishableKey: key, passwordPolicy: passwordPolicy(value.passwordPolicy) };
 }
 export function leaseDeadline(response, now = Date.now()) {
   if (response?.allowed !== true || !response.profile?.id || !['user', 'master'].includes(response.profile.role)) return 0;

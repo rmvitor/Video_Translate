@@ -77,15 +77,6 @@ test('encrypted local backup transfers projects, PDF images and saved video into
  }finally{await other.close();}
 });
 
-test('password recovery email link works in a new tab without persisting the auth token',async({page,context})=>{
- await mockAccess(context,{session:false});await page.goto('./');await page.locator('#access-email').fill('fixture@example.test');await page.locator('#forgot-password').click();
- await expect(page.locator('#auth-error')).toContainText('instruções de recuperação');
- expect(await page.evaluate(()=>localStorage.getItem('entrelinhas.auth.127.0.0.1:4173'))).toBe(null);
- const next=await context.newPage();await next.goto(page.url()+'?code=fixture-code');
- await expect(next.locator('#recovery-form')).toBeVisible();await next.locator('#recovery-password').fill('new fixture password only');await next.getByRole('button',{name:'Salvar nova senha'}).click();await expect(next.locator('#app')).toBeVisible();
- expect(await next.evaluate(()=>localStorage.getItem('entrelinhas.auth.127.0.0.1:4173'))).toBe(null);
-});
-
 test('different accounts on one device have separate local libraries and logout clears the previous UI',async({page,context})=>{
  const access=await mockAccess(context);const secondId='00000000-0000-4000-8000-000000000002';
  const token2=`${Buffer.from(JSON.stringify({alg:'HS256'})).toString('base64url')}.${Buffer.from(JSON.stringify({sub:secondId,session_id:'10000000-0000-4000-8000-000000000002',exp:Math.floor(Date.now()/1000)+3600})).toString('base64url')}.fixture-signature`;
@@ -93,6 +84,6 @@ test('different accounts on one device have separate local libraries and logout 
  await context.route('**/auth/v1/token*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify(route.request().postDataJSON().email==='second@example.test'?secondSession:access.session)}));
  await context.route('**/functions/v1/access-control',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({allowed:true,lease_seconds:65,profile:route.request().headers().authorization?.includes(token2)?{...access.profile,id:secondId,email:'second@example.test'}:access.profile})}));
  await page.goto('./');await expect(page.locator('#app')).toBeVisible();await page.locator('#project-input').setInputFiles(userFile);await expect(page.locator('#file-title')).toHaveText('Treinamento local secreto');
- await page.locator('#signout').click();await expect(page.locator('#signin-form')).toBeVisible();await page.locator('#access-email').fill('second@example.test');await page.locator('#access-password').fill('fixture password only');await page.locator('#auth-submit').click();await expect(page.locator('#app')).toBeVisible();
+ await page.locator('#signout').click();await expect(page.locator('#signin-form')).toBeVisible();await expect(page.locator('#video-organization')).toBeEmpty();await page.locator('#access-email').fill('second@example.test');await page.locator('#access-password').fill('fixture password only');await page.locator('#auth-submit').click();await expect(page.locator('#app')).toBeVisible();
  await page.getByRole('button',{name:'Minha biblioteca'}).click();await expect(page.locator('.library-card')).toHaveCount(0);expect(await counts(page)).toEqual([1,0,0]);expect(await counts(page,`entrelinhas-local:user:${secondId}`)).toEqual([0,0,0]);
 });

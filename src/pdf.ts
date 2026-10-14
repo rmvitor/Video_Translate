@@ -41,7 +41,7 @@ async function imageBlob(image: ImagePixels): Promise<{ blob: Blob; blank: boole
 
 export async function extractPdf(file: File, onPage: (page: number, total: number) => void, signal: AbortSignal): Promise<PdfDocument> {
   if (file.size > 50 * 1024 * 1024) throw new Error('Escolha um PDF de até 50 MB.');
-  const base = new URL(import.meta.env.BASE_URL, location.href).href;
+  const base = new URL(import.meta.env.BASE_URL, document.baseURI).href;
   const loading = pdfjs.getDocument({
     data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false,
     cMapUrl: `${base}runtime/pdf/cmaps/`, cMapPacked: true,

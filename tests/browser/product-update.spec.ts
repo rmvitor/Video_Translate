@@ -50,7 +50,7 @@ test('simplified signup sends name and contact as account metadata and keeps the
  await page.locator('#toggle-signup').click();await page.locator('#access-email').fill('customer@example.test');await page.locator('#access-password').fill('1234567');await page.locator('#access-name').fill('Cliente de teste');await page.locator('#access-contact').fill('+55 11 90000-0000');await page.locator('#auth-submit').click();
  expect(fixture.calls.filter(call=>call.path.endsWith('/signup'))).toHaveLength(0);
  await page.locator('#access-password').fill('12345678');await page.locator('#auth-submit').click();
- await expect(page.locator('#access-status')).toContainText('aprovação do master');await expect(page.locator('#app')).not.toBeVisible();
+ await expect(page.locator('#resend-confirmation-form')).toBeVisible();await expect(page.locator('#app')).not.toBeVisible();
  const signup=fixture.calls.find(call=>call.path.endsWith('/signup'));expect(signup.body.password).toBe('12345678');expect(signup.body.data).toEqual({display_name:'Cliente de teste',contact:'+55 11 90000-0000'});expect(signup.body.data.role).toBeUndefined();
 });
 
@@ -58,7 +58,7 @@ test('invited user defines a password before the tool can open',async({page,cont
  const fixture=await mockAccess(context,{session:false});
  const hash=new URLSearchParams({access_token:fixture.session.access_token,refresh_token:fixture.session.refresh_token,expires_in:'3600',token_type:'bearer',type:'invite'});
  await page.goto('./#'+hash);await expect(page.locator('#recovery-form')).toBeVisible();await expect(page.locator('#app')).not.toBeVisible();
- await page.locator('#recovery-password').fill('12345678');await page.getByRole('button',{name:'Salvar nova senha'}).click();await expect(page.locator('#app')).toBeVisible();
+ await page.locator('#recovery-password').fill('12345678');await page.locator('#recovery-confirmation').fill('12345678');await page.getByRole('button',{name:'Salvar nova senha'}).click();await expect(page.locator('#access-status')).toContainText('Senha alterada com sucesso');await expect(page.locator('#signin-form')).toBeVisible();
  expect(fixture.calls.some(call=>call.path.endsWith('/user')&&call.method==='PUT')).toBe(true);
 });
 

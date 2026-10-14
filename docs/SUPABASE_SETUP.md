@@ -20,17 +20,39 @@ Todas as novas contas começam como **pending**. Permissões não vêm de metada
 
 ## 3. Configurar e-mail e recuperação de senha
 
-Em **Authentication → URL Configuration**:
+Em **Authentication → URL Configuration**, mantenha **Site URL** como `https://rmvitor.github.io/Video_Translate/` e acrescente estas **Redirect URLs**:
 
-- **Site URL:** `https://rmvitor.github.io/Video_Translate/`
-- **Redirect URLs:** `https://rmvitor.github.io/Video_Translate/`
-- Para testar localmente, acrescente `http://localhost:5173/` ou o endereço exato usado no desenvolvimento.
+- `https://rmvitor.github.io/Video_Translate/` (login e convites antigos).
+- `https://rmvitor.github.io/Video_Translate/nova-senha/` e `https://rmvitor.github.io/Video_Translate/nova-senha/**` (recuperação; o SDK pode acrescentar o identificador PKCE na query).
+- `https://rmvitor.github.io/Video_Translate/confirmar-email/` e `https://rmvitor.github.io/Video_Translate/confirmar-email/**` (confirmação do cadastro).
 
-Em **Authentication → Providers → Email**, mantenha e-mail/senha e confirmação de e-mail ativos. Configure o mínimo de senha em 8 caracteres para novas contas.
+A página pública para solicitar o link é `https://rmvitor.github.io/Video_Translate/recuperar-senha/`. As URLs com barra final são as usadas pelo app; o Pages redireciona a versão sem barra. São diretórios reais no build, sem depender de um redirecionamento SPA/404. Para testes locais, cadastre os mesmos caminhos na origem usada, por exemplo `http://localhost:5173/nova-senha/` e `http://localhost:5173/confirmar-email/`, incluindo as variantes `/**`. No servidor de testes, o prefixo é `http://127.0.0.1:4173/Video_Translate/`.
 
-Configure o **SMTP** do projeto para enviar confirmação e recuperação aos usuários. O remetente padrão do Supabase é destinado a testes e pode restringir os destinatários/envios. As configurações de SMTP e seus segredos ficam no Supabase.
+Em **Authentication → Providers → Email**, mantenha e-mail/senha e confirmação de e-mail ativos. Configure o mínimo de senha em **8 caracteres**, conforme o pedido para esta plataforma. Políticas mais fortes continuam permitidas: espelhe o mínimo e a composição do Auth em `public/access-config.json`, na propriedade pública `passwordPolicy`:
 
-O app usa PKCE. Os tokens de sessão ficam no `sessionStorage`; o verificador temporário de links de e-mail fica no `localStorage` por até uma hora, permitindo abrir o link em outra aba do mesmo navegador. Ele é removido após uso/expiração e não entra no backup. A confirmação da conta também pode ser seguida de um login normal por e-mail/senha.
+```json
+"passwordPolicy": { "minimumLength": 8, "requiredCharacters": "" }
+```
+
+`requiredCharacters` aceita os valores do Supabase: `""`, `"letters_digits"`, `"lower_upper_letters_digits"` e `"lower_upper_letters_digits_symbols"`. O app exibe essas regras na solicitação de acesso e na nova senha, valida a confirmação e mantém um mínimo de 8. Login aceita senhas antigas; backup mantém seu mínimo independente de 8. O endpoint público de configuração do Auth não informa a política de senha: a configuração acima deve acompanhar o painel. O servidor valida todas as regras, inclusive senhas vazadas e reautenticação quando habilitadas. O app não desativa essas políticas. A chave pública não permite alterar configurações no painel.
+
+Em **Authentication → Email Templates**, confira **Confirm signup**, **Reset password** e **Invite user**. Nos templates padrão, mantenha o link `{{ .ConfirmationURL }}` para que a verificação ocorra no Supabase e respeite o `emailRedirectTo`/`redirectTo` do app. Não substitua esse link apenas pelo Site URL: isso perde a verificação e a rota de recuperação. Confira também **Password changed** se as notificações de alteração estiverem habilitadas.
+
+Configure o **SMTP** do projeto para enviar confirmação, recuperação e convites. O remetente padrão do Supabase é destinado a testes e pode restringir destinatários/envios. Configurações de SMTP e seus segredos ficam no Supabase. Ajuste também o prazo de validade dos links e os limites de envio no painel; o app trata links expirados, permite reenvio e apresenta respostas que não revelam a existência da conta.
+
+O app usa PKCE com o SDK do Supabase no navegador, sem SSR. Tokens de sessão ficam no `sessionStorage`; verificadores PKCE ficam no `localStorage` por até uma hora, atravessam abas e são removidos após uso/expiração. Não entram em backups. Abra o e-mail no mesmo navegador/dispositivo em que solicitou o link. Sem o verificador, o app pede outro link; um callback inválido não aproveita uma sessão já aberta de outra conta.
+
+Para permitir abrir o e-mail em outro navegador/dispositivo, é possível usar templates personalizados com verificação de `token_hash`, suportada pelo app. Exemplo para **Reset password**:
+
+```html
+<a href="{{ .SiteURL }}nova-senha/?token_hash={{ .TokenHash }}&type=recovery">Redefinir senha</a>
+```
+
+Para **Confirm signup**, use `{{ .SiteURL }}confirmar-email/?token_hash={{ .TokenHash }}&type=signup`. O Site URL deve terminar em `/`. Trate o token como credencial de uso único; o app remove parâmetros de callback após a verificação e usa `no-referrer`. Não registre tokens em analytics. Os templates padrão continuam compatíveis e os convites antigos com fragmento de sessão também são tratados.
+
+A página `/nova-senha/` só salva com uma sessão válida, conferida novamente no servidor por `getUser()` antes de `updateUser()`. Depois do sucesso, encerra a sessão local e solicita login com a nova senha. Usuários conectados também podem acessar **Preferências → Alterar senha**. Recuperar ou confirmar uma conta nunca substitui a aprovação, a validade ou o bloqueio definidos pelo master.
+
+Os testes de navegador usam o SDK real e Auth/Edge simulados: solicitação e reenvio, callback PKCE em outra aba, confirmação de senha, alteração e login com a senha nova, código/links expirados, ausência de sessão, confirmação de e-mail e políticas mais fortes. Envio SMTP e configurações do projeto hospedado precisam ser conferidos no painel e com um e-mail real após cadastrar as URLs; os testes não enviam mensagens nem alteram senhas de contas reais.
 
 ## 4. Publicar a função de controle de acesso
 

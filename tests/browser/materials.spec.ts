@@ -39,7 +39,7 @@ async function localVoiceFixture(page: import('@playwright/test').Page) {
     (window as any).__speech = state;
     (window as any).SpeechSynthesisUtterance = class { text: string; constructor(text: string) { this.text = text; } };
     Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
-      getVoices: () => [local, remote, english, {name:'Remote English',lang:'en-US',voiceURI:'remote-english',localService:false}], addEventListener: () => {},
+      getVoices: () => [local, remote, english, {name:'Remote English',lang:'en-US',voiceURI:'remote-english',localService:false}], addEventListener: (name:string,listener:()=>void) => {if(name==='voiceschanged')(window as any).__voicesChanged=listener;},
       speak: (utterance: any) => { state.utterances.push(utterance);state.queue.push(utterance);const end=utterance.onend;utterance.onend=(event:any)=>{end?.(event);if(state.current===utterance)state.current=undefined;advance();};advance(); },
       cancel: () => { state.current = undefined;state.queue=[]; state.canceled++; },
       pause: () => { state.paused = true; }, resume: () => { state.paused = false;advance(); },
@@ -207,7 +207,7 @@ test('bilingual local narration pronounces English labels, saves custom terms pe
   await page.goto('./');await page.getByRole('button',{name:'Páginas PDF',exact:true}).click();await page.locator('#pdf-input').setInputFiles(pdfPath);
   await expect(page.locator('#pdf-reader')).toBeVisible();
   await page.locator('[data-edit-block]').first().click();await page.locator('#pdf-edit-translation').fill('Abra Home Management e confira o Insight no widget.');await page.getByRole('button',{name:'Salvar tradução',exact:true}).click();
-  await page.locator('#pdf-settings summary').click();await page.locator('[data-english-terms=pdf]').fill('widget');await page.locator('[data-english-terms=pdf]').blur();
+  await page.locator('#pdf-settings summary').click();await page.locator('[data-narration-language]').filter({visible:true}).selectOption('mixed');await page.locator('[data-english-terms=pdf]').fill('widget');await page.locator('[data-english-terms=pdf]').blur();
   await page.locator('#read-pdf').click();
   await expect.poll(()=>page.evaluate(()=>(window as any).__speech.utterances.filter((u:any)=>u.lang==='en-US').map((u:any)=>u.text))).toEqual(['Home Management','Insight','widget.']);
   const voices=await page.evaluate(()=>(window as any).__speech.utterances.map((u:any)=>({text:u.text,lang:u.lang,voice:u.voice.voiceURI,local:u.voice.localService})));
@@ -221,4 +221,96 @@ test('bilingual local narration pronounces English labels, saves custom terms pe
   await expect(page.locator('[data-english-terms=pdf]')).toBeVisible();
   await expect(page.locator('[data-english-terms=pdf]')).toHaveValue('widget');
   expect(outbound).toEqual([]);
+});
+
+test('video controls stay mounted during project saves and voice status updates',async({page})=>{
+  await localVoiceFixture(page);await page.goto('./');
+  await page.locator('#project-input').setInputFiles({name:'controls.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({version:1,title:'Controles estáveis',duration:4,segments:[{start:0,end:3.9,original:'Welcome.',translated:'Boas-vindas ao treinamento.'}]}))});
+  await page.locator('#reattach-button').click();await page.locator('#video-input').setInputFiles(videoPath);
+  await page.getByRole('button',{name:'Projetos e assuntos',exact:true}).click();await page.locator('#new-collection').click();await page.locator('#learning-title').fill('Projeto de controles');await page.locator('#learning-title-form button[type=submit]').click();
+  await expect(page.locator('#dialog')).not.toBeVisible();
+  await page.getByRole('button',{name:'Traduzir vídeo',exact:true}).click();await page.locator('#video-settings > summary').click();
+  await page.locator('#video-collection').selectOption({label:'Projeto de controles'});
+  await page.locator('#view-video-project').click();await expect(page.locator('#project-outlet #workspace-view')).toBeVisible();
+  await page.evaluate(()=>{
+    const state={removed:0,optionsChanged:0,select:document.querySelector('#video-collection'),voice:document.querySelector('[data-voice-select]')};(window as any).__controlState=state;
+    new MutationObserver(records=>{for(const record of records)for(const node of record.removedNodes)if(node instanceof Element&&(node.id==='workspace-view'||node.contains(document.querySelector('#video')!)))state.removed++;}).observe(document.querySelector('main')!,{childList:true,subtree:true});
+    new MutationObserver(records=>{state.optionsChanged+=records.length;}).observe(state.voice!,{childList:true,subtree:true});
+  });
+  await page.locator('[data-voice-select]').filter({visible:true}).focus();await page.evaluate(()=>(window as any).__voicesChanged());
+  expect(await page.evaluate(()=>(window as any).__controlState.optionsChanged)).toBe(0);
+  await page.locator('#video-collection').focus();await page.locator('#video-source-language').selectOption('es');
+  await expect.poll(()=>page.evaluate(()=>(window as any).__controlState.select===document.querySelector('#video-collection'))).toBe(true);
+  await page.locator('#video-narration').check();await page.locator('#video').evaluate((video:HTMLVideoElement)=>{video.playbackRate=.25;return video.play();});
+  await expect.poll(()=>page.locator('#video').evaluate((video:HTMLVideoElement)=>video.currentTime)).toBeGreaterThan(.2);
+  await page.locator('#toggle-completed').click();await expect(page.locator('.collection-header p')).toContainText('1/1');
+  await page.locator('#file-title').click();await page.locator('.collection-header h2').click();
+  expect(await page.evaluate(()=>(window as any).__controlState.removed)).toBe(0);
+  expect(await page.evaluate(()=>(window as any).__controlState.optionsChanged)).toBe(0);
+  await expect(page.locator('#project-outlet #workspace-view')).toBeVisible();expect(await page.locator('#video').evaluate((video:HTMLVideoElement)=>video.paused)).toBe(false);
+});
+
+test('local voice preparation completes its status and cancellation ignores late worker events',async({page})=>{
+  await page.addInitScript(()=>{
+    const NativeWorker=window.Worker;let worker:any,job:any;(window as any).__voiceJobs=0;
+    const NativeAudio=window.Audio;(window as any).Audio=class extends NativeAudio{constructor(url:string){super(url);(window as any).__voiceElement=this;}};
+    (window as any).Worker=class{
+      onmessage:any;onerror:any;
+      constructor(url:any,options:any){if(!String(url).includes('neural-voice.worker'))return new NativeWorker(url,options) as any;worker=this;}
+      postMessage(value:any){job=value;if(value.chunks?.length)(window as any).__voiceJobs++;}
+      terminate(){}
+    };
+    (window as any).__voiceProgress=()=>worker.onmessage({data:{id:job.id,type:'progress',message:'Gerando a narração local…'}});
+    (window as any).__voiceReady=()=>worker.onmessage({data:{id:job.id,type:'ready'}});
+    (window as any).__voiceAudio=()=>{
+      const audio=new ArrayBuffer(44+22050*2),view=new DataView(audio),write=(at:number,value:string)=>{for(let i=0;i<value.length;i++)view.setUint8(at+i,value.charCodeAt(i));};
+      write(0,'RIFF');view.setUint32(4,audio.byteLength-8,true);write(8,'WAVE');write(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,22050,true);view.setUint32(28,44100,true);view.setUint16(32,2,true);view.setUint16(34,16,true);write(36,'data');view.setUint32(40,audio.byteLength-44,true);
+      worker.onmessage({data:{id:job.id,type:'audio',audio,duration:1,marks:[{id:'0',start:0},{id:'1',start:.5}]}});
+    };
+  });
+  await page.goto('./');await page.locator('#project-input').setInputFiles({name:'status.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({version:1,title:'Status da voz',filename:'training.mp4',duration:4,segments:[{start:0,end:2,original:'Welcome.',translated:'Boas-vindas.'},{start:2.1,end:3.9,original:'Continue.',translated:'Continue o treinamento.'}]}))});
+  await page.locator('#reattach-button').click();await page.locator('#video-input').setInputFiles(videoPath);
+  await page.locator('#video-settings > summary').click();await expect(page.locator('[data-narration-language]').filter({visible:true})).toHaveValue('pt-BR');const status=page.locator('[data-voice-status]').filter({visible:true});
+  await page.locator('[data-prepare-voice]').filter({visible:true}).click();await page.evaluate(()=>(window as any).__voiceProgress());await expect(status).toContainText('Gerando');
+  await page.evaluate(()=>(window as any).__voiceReady());await expect(status).toHaveText('Vozes prontas para uso local.');
+  await expect(page.locator('[data-prepare-voice]').filter({visible:true})).toBeEnabled();
+  await page.locator('#video-narration').check();await page.evaluate(()=>(window as any).__voiceProgress());await expect(status).toContainText('Gerando');
+  await page.evaluate(()=>(window as any).__voiceAudio());await expect(status).toHaveText('Narração contínua pronta.');await expect(page.locator('#narration-status')).toHaveText('Narração contínua pronta. Dê play para ouvir.');
+  const source=await page.evaluate(()=>(window as any).__voiceElement.src);
+  for(const time of [2.8,.5,3.5,0]){
+    await page.locator('#video').evaluate((video:HTMLVideoElement,time)=>{video.currentTime=time;},time);
+    await expect.poll(()=>page.locator('#video').evaluate((video:HTMLVideoElement)=>video.seeking)).toBe(false);
+    await expect(page.locator('#narration-status')).toHaveText('Narração contínua pronta. Dê play para ouvir.');
+    expect(await page.evaluate(()=>(window as any).__voiceElement.src)).toBe(source);expect(await page.evaluate(()=>(window as any).__voiceJobs)).toBe(1);
+    expect(await page.locator('#video').evaluate((video:HTMLVideoElement)=>video.paused)).toBe(true);
+  }
+  await page.locator('#video-narration').uncheck();await page.locator('#video-narration').check();await page.evaluate(()=>(window as any).__voiceProgress());await page.locator('#video-narration').uncheck();
+  await expect(status).toHaveText('Narração interrompida.');await page.evaluate(()=>(window as any).__voiceProgress());await expect(status).toHaveText('Narração interrompida.');
+  await page.locator('[data-prepare-voice]').filter({visible:true}).click();await expect(page.locator('[data-prepare-voice]').filter({visible:true})).toBeDisabled();
+  await page.locator('[data-narration-language]').filter({visible:true}).selectOption('mixed');await page.evaluate(()=>(window as any).__voiceReady());await expect(status).toHaveText('Narração interrompida.');
+  await page.locator('#video-narration').check();await page.evaluate(()=>(window as any).__voiceReady());await expect(status).toContainText('não gerou o áudio');await expect(page.locator('#video-narration')).not.toBeChecked();
+});
+
+test('retranscription uses the selected stronger model and replaces saved words only when new text is ready',async({page})=>{
+  await page.addInitScript(()=>{
+    const NativeWorker=window.Worker;(window as any).__transcriptions=[];
+    (window as any).Worker=class{
+      onmessage:any;onerror:any;
+      constructor(url:any,options:any){if(!String(url).includes('processor.worker'))return new NativeWorker(url,options) as any;}
+      terminate(){}
+      postMessage(job:any){
+        (window as any).__transcriptions.push({quality:job.transcriptionQuality,segments:job.segments,file:job.file instanceof File});
+        setTimeout(()=>{
+          if(job.transcriptionQuality==='small'){this.onmessage({data:{type:'error',message:'Modelo indisponível no teste.'}});return;}
+          const segments=[{start:0,end:3.9,original:'Welcome to the complete training with every word.',translated:''}];this.onmessage({data:{type:'transcribed',segments}});this.onmessage({data:{type:'complete',segments}});
+        },20);
+      }
+    };
+  });
+  await page.goto('./');await page.locator('#project-input').setInputFiles({name:'old.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({version:1,title:'Texto antigo',filename:'training.mp4',duration:4,segments:[{start:0,end:3.9,original:'Welcome.',translated:'Boas-vindas.'}]}))});
+  await page.locator('#reattach-button').click();await page.locator('#video-input').setInputFiles(videoPath);await page.locator('#video-settings > summary').click();await expect(page.locator('#transcription-quality')).toHaveValue('base');await page.locator('#transcription-quality').selectOption('small');
+  await page.locator('#retranscribe-video').click();await page.locator('#confirm-retranscription').click();await expect(page.locator('#error-panel')).toBeVisible();await expect(page.locator('.translation').first()).toHaveText('Boas-vindas.');
+  await page.locator('#transcription-quality').selectOption('base');await page.locator('#retranscribe-video').click();await page.locator('#confirm-retranscription').click();await expect(page.locator('#library-outlet #workspace-view')).toBeVisible();
+  await page.locator('[data-language=original]').click();await expect(page.locator('.original').first()).toHaveText('Welcome to the complete training with every word.');
+  expect(await page.evaluate(()=>(window as any).__transcriptions)).toEqual([{quality:'small',segments:undefined,file:true},{quality:'base',segments:undefined,file:true}]);
 });

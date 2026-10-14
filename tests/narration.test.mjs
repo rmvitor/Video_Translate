@@ -41,3 +41,13 @@ test('speech pace adapts to the video within an intelligible range instead of pa
  assert.equal(playbackRateForVideo(12,10),1.2);assert.equal(playbackRateForVideo(50,10),2);
  assert.equal(playbackRateForVideo(8,10,1,1.5),1.2000000000000002);assert.equal(playbackRateForVideo(0,10,.8),.8);
 });
+
+test('default narration stays Portuguese and cached audio seeking follows cues without changing the rate',async()=>{
+ const {narrationPosition}=await import('../src/narration-plan.mjs');
+ assert.ok(buildNarrationPlan([{id:'0',text:'Abra Insight e Home Management.'}]).every(chunk=>chunk.lang==='pt-BR'));
+ const segments=[{start:0,end:.5},{start:1,end:2}],marks=[{id:'0',start:0},{id:'0',start:1},{id:'1',start:3}];
+ assert.deepEqual(narrationPosition(segments,marks,6,.25),{offset:1.5,startsAt:.25,finished:false});
+ assert.deepEqual(narrationPosition(segments,marks,6,.75),{offset:3,startsAt:1,finished:false});
+ assert.deepEqual(narrationPosition(segments,marks,6,1.5),{offset:4.5,startsAt:1.5,finished:false});
+ assert.deepEqual(narrationPosition(segments,marks,6,2),{offset:6,startsAt:2,finished:true});
+});

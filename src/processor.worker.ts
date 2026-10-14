@@ -2,6 +2,7 @@ import { env, pipeline } from '@huggingface/transformers';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import type { Segment, WorkerEvent } from './types';
 import { LANGUAGES } from './preferences.mjs';
+import { normalizeTranscript, transcriptionModel } from './transcription.mjs';
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
@@ -17,6 +18,7 @@ type Translator = ((text: string, options: Record<string, unknown>) => Promise<{
 // Narrow the library's very large conditional type to the two single-input pipelines we use.
 const createPipeline = pipeline as unknown as (task: string, model: string, options: Record<string, unknown>) => Promise<unknown>;
 let transcriber: Transcriber | undefined;
+let speechModel='';
 let translator: Translator | undefined;
 
 const send = (message: WorkerEvent) => self.postMessage(message);
@@ -74,7 +76,7 @@ async function translateUnits(units: { id: string; text: string }[], onResult?: 
   return output;
 }
 
-self.onmessage = async (event: MessageEvent<{ file?: File; segments?: Segment[]; blocks?: { id: string; text: string }[]; baseURL: string; sourceLanguage?: string; transcribeOnly?: boolean }>) => {
+self.onmessage = async (event: MessageEvent<{ file?: File; segments?: Segment[]; blocks?: { id: string; text: string }[]; baseURL: string; sourceLanguage?: string; transcribeOnly?: boolean; transcriptionQuality?: string }>) => {
   try {
     const source = event.data.sourceLanguage || 'en';
     const language = LANGUAGES.find(([code]) => code === source)?.[2];
@@ -91,19 +93,17 @@ self.onmessage = async (event: MessageEvent<{ file?: File; segments?: Segment[];
       const audio = await audioFromVideo(event.data.file!, event.data.baseURL);
       if (audio.length / 16000 > 1800) throw new Error('Esta versão processa até 30 minutos por vídeo. Divida o treinamento em partes menores.');
       status('models', 'Preparando o modelo de transcrição…');
-      transcriber ??= await createPipeline('automatic-speech-recognition', source === 'en' ? 'Xenova/whisper-tiny.en' : 'Xenova/whisper-tiny', {
+      const model=transcriptionModel(source,event.data.transcriptionQuality);
+      if(speechModel!==model)transcriber=undefined;
+      transcriber ??= await createPipeline('automatic-speech-recognition', model, {
         device: 'wasm', dtype: 'q8', progress_callback: downloading('Transcrição'),
       }) as Transcriber;
+      speechModel=model;
       status('transcribe', 'Ouvindo e transcrevendo localmente… Isso pode levar alguns minutos.');
-      const result = await transcriber(audio, { return_timestamps: true, chunk_length_s: 30, stride_length_s: 5, ...(source !== 'en' ? { language, task: 'transcribe' } : {}) });
+      const result = await transcriber(audio, { return_timestamps: true, chunk_length_s: 30, stride_length_s: 8, max_new_tokens:440, do_sample:false, ...(source !== 'en' ? { language, task: 'transcribe' } : {}) });
       const output = Array.isArray(result) ? result[0] : result;
       const duration = audio.length / 16000;
-      segments = (output.chunks ?? []).map((chunk, index, chunks) => ({
-        start: Math.max(0, chunk.timestamp[0] ?? (index ? chunks[index - 1].timestamp[1] ?? 0 : 0)),
-        end: Math.min(duration, chunk.timestamp[1] ?? chunks[index + 1]?.timestamp[0] ?? duration),
-        original: chunk.text.trim(),
-        translated: '',
-      })).filter(s => s.original && s.end > s.start);
+      segments = normalizeTranscript(output,duration) as Segment[];
       if (!segments.length) throw new Error('Não foi possível identificar fala no áudio. Você pode importar uma legenda SRT ou VTT.');
       send({ type: 'transcribed', segments });
     }

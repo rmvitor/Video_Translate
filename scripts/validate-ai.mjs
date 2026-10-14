@@ -21,6 +21,7 @@ let timer;
 try {
   await page.goto('http://127.0.0.1:4173/Video_Translate/');
   await page.locator('#app').waitFor({ state: 'visible' });
+  await page.evaluate(async()=>{await navigator.serviceWorker.ready;if(!navigator.serviceWorker.controller)await new Promise(resolve=>navigator.serviceWorker.addEventListener('controllerchange',resolve,{once:true}));});
   await page.locator('#video-input').setInputFiles(process.env.VIDEO_INPUT);
   await page.waitForFunction(() => !document.querySelector('#process').disabled);
   await page.locator('#process').click();
@@ -54,6 +55,19 @@ try {
   }, MODEL_DATABASE);
   if (!Object.values(contentChecks).every(Boolean)) throw new Error('Content checks failed: ' + JSON.stringify(contentChecks));
   console.log('Timing and Portuguese text checks passed (private text omitted).');
+  if(process.env.TRANSCRIPT_EXPECTED){
+    const coverage=await page.evaluate(async({databaseName,reference})=>{
+      const db=await new Promise(resolve=>{const request=indexedDB.open(databaseName);request.onsuccess=()=>resolve(request.result);});
+      const items=await new Promise(resolve=>{const request=db.transaction('projects').objectStore('projects').getAll();request.onsuccess=()=>resolve(request.result);});db.close();
+      const normalize=text=>text.toLowerCase().match(/[\p{L}\p{N}]+/gu)||[];
+      const expected=normalize(reference),actual=normalize(items.sort((a,b)=>b.createdAt-a.createdAt)[0].segments.map(segment=>segment.original).join(' '));
+      let previous=new Uint16Array(actual.length+1);
+      for(const word of expected){const next=new Uint16Array(actual.length+1);for(let j=1;j<=actual.length;j++)next[j]=word===actual[j-1]?previous[j-1]+1:Math.max(previous[j],next[j-1]);previous=next;}
+      const matched=previous[actual.length];return {expectedWords:expected.length,recognizedWords:actual.length,recall:matched/expected.length,precision:matched/actual.length};
+    },{databaseName:MODEL_DATABASE,reference:process.env.TRANSCRIPT_EXPECTED});
+    if(coverage.recall<.9||coverage.precision<.9)throw new Error('Reference transcription coverage failed: '+JSON.stringify(coverage));
+    console.log('Reference word coverage passed (text omitted):',JSON.stringify(coverage));
+  }
   // Remove the proxy adapter: offline must use the real browser cache only.
   await context.unrouteAll({ behavior: 'wait' });
   await localAccessFixture(context);

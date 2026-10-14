@@ -7,7 +7,7 @@ verify_jwt = false
 
 [auth]
 site_url = "http://localhost:5173"
-additional_redirect_urls = ["http://localhost:5173/", "http://127.0.0.1:5173/", "http://127.0.0.1:4173/Video_Translate/"]
+additional_redirect_urls = ["http://localhost:5173/", "http://127.0.0.1:5173/", "http://127.0.0.1:4173/Video_Translate/", "http://localhost:5173/nova-senha/**", "http://localhost:5173/confirmar-email/**", "http://127.0.0.1:5173/nova-senha/**", "http://127.0.0.1:5173/confirmar-email/**", "http://127.0.0.1:4173/Video_Translate/nova-senha/**", "http://127.0.0.1:4173/Video_Translate/confirmar-email/**"]
 enable_signup = true
 minimum_password_length = 8
 

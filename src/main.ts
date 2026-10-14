@@ -21,7 +21,11 @@ const escape = (text: unknown) => String(text ?? '').replace(/[&<>"']/g, c => ({
 const icon = (name: string, className = '') => `<i data-lucide="${name}" class="${className}" aria-hidden="true"></i>`;
 const icons = () => createIcons({ icons: { Play, Layers, Languages, ShieldCheck, HardDrive, Download, Upload, Plus, ArrowUpRight, FileVideo, Search, Captions, Check, X, LoaderCircle, ChevronRight, Trash2, FolderOpen, Settings2, Pencil, FileText, MonitorSmartphone, BookOpen, WifiOff, Clock3, CircleHelp, Sparkles, ArrowLeft, Menu, Volume2, Pause } });
 const megabytes = (size: number) => `${(size / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB`;
-const appURL = new URL(import.meta.env.BASE_URL, location.href);
+const appURL = new URL(import.meta.env.BASE_URL, document.baseURI);
+// History changes the page URL. Freeze the app base so a password callback can
+// return to the tool without sending runtime/model requests to the wrong folder.
+const documentBase=document.querySelector<HTMLBaseElement>('base')||document.createElement('base');
+documentBase.href=appURL.href;if(!documentBase.isConnected)document.head.prepend(documentBase);
 
 let project: Project | undefined;
 let projects: Project[] = [];
@@ -62,7 +66,7 @@ $('#app').innerHTML = `
     <div class="sidebar-bottom">
       <div class="local-card"><span class="local-icon">${icon('hard-drive')}</span><strong>Seu dispositivo. Seu conteúdo.</strong><p>Os vídeos ficam com você.<br>Tradução local ou de texto online.</p><span class="local-indicator"><span></span> Processamento local</span></div>
       <button class="install-button" id="install">${icon('monitor-smartphone')}<span>Instalar aplicativo</span>${icon('arrow-up-right')}</button>
-      <div class="sidebar-footer">Feito para compreender, sem barreiras.<span>v0.7 · PWA</span></div>
+      <div class="sidebar-footer">Feito para compreender, sem barreiras.<span>v0.8 · PWA</span></div>
     </div>
   </aside>
   <div class="app-content">
@@ -81,8 +85,8 @@ $('#app').innerHTML = `
             </div>
             <div class="player-info"><div><strong id="file-title">Seu próximo treinamento</strong><span id="file-detail">Adicione um vídeo para começar</span></div><span class="language-route">EN ${icon('arrow-up-right')} PT-BR</span></div>
             <div class="player-toolbar"><label class="checkbox-label"><input type="checkbox" id="remember" /><span>Guardar vídeo neste dispositivo</span><button class="icon-button" data-action="storage-help" aria-label="Como funciona o armazenamento local">${icon('circle-help')}</button></label><label class="caption-select">${icon('captions')}<select id="caption-language" aria-label="Idioma das legendas"><option value="translated">Português</option><option value="original">Original</option><option value="both">Os dois idiomas</option><option value="off">Sem legenda</option></select></label></div>
-            <div class="narration-panel"><div class="narration-toggles"><label><input type="checkbox" id="video-narration" />${icon('volume-2')}<span id="video-narration-label">Narrar em PT-BR + inglês</span></label><label><input type="checkbox" id="mute-original" />Silenciar áudio original</label></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local do vídeo"></select></label><label>Velocidade<select data-voice-rate aria-label="Velocidade da narração do vídeo"><option value="0.8">0,8×</option><option value="1">1×</option><option value="1.2">1,2×</option><option value="1.5">1,5×</option></select></label></div><p id="narration-status" aria-live="polite">Narração contínua em português e inglês. Prepare as vozes antes do primeiro uso; o vídeo segue sem pausas automáticas.</p></div>
-            <div class="source-settings"><label>Idioma original<select id="video-source-language">${LANGUAGES.map(([code, label]) => `<option value="${code}">${label}</option>`).join('')}</select></label><p>Para outros idiomas, os modelos locais são maiores. Se preferir Gemini, transcreva localmente e envie somente o texto.</p><div class="inline-actions"><button class="button secondary" id="transcribe-only">Só transcrever localmente</button><button class="button secondary" id="online-video">Traduzir texto com Gemini</button><button class="text-button" id="analyze-video">Analisar texto com Gemini</button></div><details id="video-analysis" hidden><summary>Análise em PT-BR</summary><p class="analysis-copy"></p></details></div><div class="process-area"><div class="process-copy"><span class="sparkle-icon">${icon('sparkles')}</span><div><strong id="process-title">Traduza sem sair daqui</strong><p id="process-description">A IA roda no navegador. Nenhuma chave de API necessária.</p></div></div><button class="button primary" id="process" disabled>${icon('languages')}Transcrever e traduzir</button></div>
+            <div class="narration-panel"><div class="narration-toggles"><label><input type="checkbox" id="video-narration" />${icon('volume-2')}<span id="video-narration-label">Narrar em PT-BR</span></label><label><input type="checkbox" id="mute-original" />Silenciar áudio original</label></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local do vídeo"></select></label><label>Velocidade<select data-voice-rate aria-label="Velocidade da narração do vídeo"><option value="0.8">0,8×</option><option value="1">1×</option><option value="1.2">1,2×</option><option value="1.5">1,5×</option></select></label></div><p id="narration-status" aria-live="polite">Narração contínua em PT-BR. Prepare as vozes antes do primeiro uso; o vídeo segue sem pausas automáticas.</p></div>
+            <div class="source-settings"><label>Precisão da transcrição<select id="transcription-quality"><option value="base">Reforçada (padrão)</option><option value="small">Maior precisão · mais tempo e memória</option></select></label><label>Idioma original<select id="video-source-language">${LANGUAGES.map(([code, label]) => `<option value="${code}">${label}</option>`).join('')}</select></label><p>Para outros idiomas, os modelos locais são maiores. Se preferir Gemini, transcreva localmente e envie somente o texto.</p><div class="inline-actions"><button class="button secondary" id="transcribe-only">Só transcrever localmente</button><button class="button secondary" id="retranscribe-video">Refazer transcrição do áudio</button><button class="button secondary" id="online-video">Traduzir texto com Gemini</button><button class="text-button" id="analyze-video">Analisar texto com Gemini</button></div><details id="video-analysis" hidden><summary>Análise em PT-BR</summary><p class="analysis-copy"></p></details></div><div class="process-area"><div class="process-copy"><span class="sparkle-icon">${icon('sparkles')}</span><div><strong id="process-title">Traduza sem sair daqui</strong><p id="process-description">A IA roda no navegador. Nenhuma chave de API necessária.</p></div></div><button class="button primary" id="process" disabled>${icon('languages')}Transcrever e traduzir</button></div>
             <div class="progress-area" id="progress-area" hidden aria-live="polite"><div class="progress-top"><span>${icon('loader-circle', 'spin')}<strong id="progress-message">Preparando…</strong></span><button class="text-button" id="cancel">Cancelar</button></div><div class="progress-track"><div id="progress-bar"></div></div><p>O processamento é local. Mantenha esta tela aberta; o primeiro uso baixa os modelos de IA.</p></div>
             <div class="error-panel" id="error-panel" hidden role="alert"><strong>Não foi possível concluir</strong><p id="error-message"></p><details><summary>Detalhes técnicos</summary><pre id="error-detail"></pre></details></div>
           </section>
@@ -99,7 +103,7 @@ $('#app').innerHTML = `
       </section>
       <section id="library-view" hidden><div class="page-heading"><div><div class="eyebrow">CONTEÚDO QUE FICA</div><h1>Minha biblioteca<span>.</span></h1><p>Páginas e vídeos organizados neste navegador e dispositivo.</p></div><button class="button secondary" id="import-project">${icon('upload')}Importar projeto</button></div><div class="library-notice">${icon('hard-drive')}Vídeos só são guardados quando você ativa essa opção. Exporte os projetos como backup: limpar os dados do navegador pode apagar sua biblioteca.</div><div class="library-tabs" role="tablist" aria-label="Tipo de material"><button id="library-tab-pdf" role="tab" aria-selected="true" aria-controls="library-pages-panel" data-library-tab="pdf">Páginas</button><button id="library-tab-video" role="tab" aria-selected="false" aria-controls="library-video-panel" data-library-tab="video" tabindex="-1">Vídeos</button></div><div id="library-browser"><div id="library-pages-panel" role="tabpanel" aria-labelledby="library-tab-pdf"><div id="pdf-list" class="library-grid"></div></div><div id="library-video-panel" role="tabpanel" aria-labelledby="library-tab-video" hidden><div id="library-grid" class="library-grid"></div></div></div><div id="library-reader" hidden><button id="back-library" class="text-button back-button">${icon('arrow-left')}Voltar à biblioteca</button><div id="library-outlet"></div></div></section>
       <section id="privacy-view" hidden><div class="page-heading"><div><div class="eyebrow">VOCÊ TEM O CONTROLE</div><h1>Privado por natureza<span>.</span></h1><p>Uma ferramenta pública. Seus treinamentos continuam privados.</p></div></div><div class="privacy-grid"><article class="info-card">${icon('shield-check')}<h2>O arquivo fica com você</h2><p>Vídeos, PDFs, imagens, transcrições e traduções são processados no navegador. A narração pode usar uma voz neural PT-BR gerada no próprio dispositivo ou vozes instaladas que o navegador identifica como locais. A transcrição e a tradução local funcionam no dispositivo. Se você escolher o Gemini, somente os textos selecionados e autorizados serão enviados para tradução ou análise. Vídeo, áudio, PDF e imagens nunca são enviados. A chave fica apenas na memória da sessão. O Supabase recebe somente dados de conta e controle de acesso (e-mail, IP, horários e sessões). Não enviamos conteúdo de treinamento para o Supabase.</p><p>O site e os modelos de IA precisam ser baixados pela internet no primeiro uso. Esses pedidos de download não contêm o conteúdo do seu vídeo.</p></article><article class="info-card">${icon('hard-drive')}<h2>Biblioteca local, sem nuvem</h2><p>Os textos, projetos e imagens das páginas PDF ficam no IndexedDB deste navegador. Por padrão, o vídeo só fica na memória da sessão. Ative “Guardar vídeo neste dispositivo” para também manter uma cópia local.</p><p>Os dados não são criptografados pelo aplicativo. Outras pessoas com acesso a este perfil do navegador podem abrir a biblioteca. Use um dispositivo e perfil confiáveis.</p></article><article class="info-card">${icon('wifi-off')}<h2>Preparado para ficar offline</h2><p>O aplicativo instalado guarda a interface. Os modelos completos baixados são armazenados em cache. Os arquivos e os modelos permanecem locais. Com o controle de usuários ativo, a autorização exige conexão e é renovada periodicamente; sem renovação, o acesso à interface é suspenso em até 65 segundos. A biblioteca não é apagada.</p><p>Celulares com pouca memória podem não conseguir executar os modelos. Você pode importar legendas ou projetos produzidos em outro dispositivo.</p></article><article class="info-card">${icon('settings-2')}<h2>Seus dados, suas escolhas</h2><p>Exporte textos e legendas pela área de tradução e páginas PDF em HTML com imagens incorporadas. Exporte um projeto JSON para manter os dois idiomas e os tempos (o JSON não inclui o vídeo).</p><p id="storage-estimate">Consultando armazenamento…</p><button class="button danger" id="clear-data">${icon('trash-2')}Apagar biblioteca e modelos locais</button></article></div></section>
-      <section id="settings-view" hidden><div class="page-heading"><div><div class="eyebrow">DO SEU JEITO</div><h1>Preferências<span>.</span></h1><p>Escolha a aparência e configure a tradução opcional de texto.</p></div></div><div class="settings-grid"><article class="info-card"><h2>Aparência</h2><div id="appearance-fields"></div></article><article class="info-card"><h2>Tradução e análise online</h2><div id="online-fields"></div></article></div></section>
+      <section id="settings-view" hidden><div class="page-heading"><div><div class="eyebrow">DO SEU JEITO</div><h1>Preferências<span>.</span></h1><p>Escolha a aparência e configure a tradução opcional de texto.</p></div></div><div class="settings-grid"><article class="info-card"><h2>Aparência</h2><div id="appearance-fields"></div></article><article class="info-card"><h2>Tradução e análise online</h2><div id="online-fields"></div></article></div><section class="info-card account-settings"><h2>Senha da conta</h2><p>Altere sua senha de acesso ao Entrelinhas.</p><button class="button secondary" id="change-account-password">Alterar senha</button></section></section>
     </main>
     <footer class="main-footer"><span>entrelinhas<span class="brand-dot">.</span></span><span>Mais compreensão. Menos barreiras.</span><button class="text-button" data-view="privacy">Sobre a privacidade ${icon('arrow-up-right')}</button></footer>
   </div>
@@ -128,7 +132,7 @@ learning = createLearningArea({
 access = createAccess({
   toast,
   lock: async () => {
-    localEpoch++; online.reset(); narrator.englishTerms=''; narrator.language='mixed'; $('#dialog-content').innerHTML = ''; cancelProcessing(true); narrator.stop(); videoNarration.disable(); $<HTMLVideoElement>('#video').pause();
+    localEpoch++; online.reset(); narrator.englishTerms=''; narrator.language='pt-BR'; $('#dialog-content').innerHTML = ''; cancelProcessing(true); narrator.stop(); videoNarration.disable(); $<HTMLVideoElement>('#video').pause();
     await learning.flush(); await learning.reset();
     clearVideo(); project = undefined; currentFile = undefined; projects = []; active = -1;
     pendingOrganization = undefined; attachToProject = false; storageAvailable = true;
@@ -176,7 +180,6 @@ function dialog(content: string) {
 
 function changeView(view: string) {
   if (view === 'admin' && access.profile?.role !== 'master') return;
-  learning?.prepareView();
   currentView = view;document.documentElement.dataset.view=view;
   for (const name of ['workspace', 'library', 'privacy', 'documents', 'collections', 'settings', 'admin']) $(`#${name}-view`).hidden = name !== view;
   if (view !== 'workspace') { videoNarration.disable(); $<HTMLVideoElement>('#video').pause(); }
@@ -249,6 +252,8 @@ function updateProjectUI() {
   $<HTMLSelectElement>('#video-source-language').disabled = !project || processing || Boolean(learning?.busy);
   for (const id of ['online-video', 'analyze-video']) $<HTMLButtonElement>(`#${id}`).disabled = !project?.segments.length || processing;
   $<HTMLButtonElement>('#transcribe-only').disabled = !project || processing || (!currentFile && !project.segments.length);
+  $<HTMLButtonElement>('#retranscribe-video').disabled=!project||processing||!currentFile;
+  $<HTMLSelectElement>('#transcription-quality').disabled=processing;
   $('#video-analysis').hidden = !project?.analysis;
   $('#video-analysis .analysis-copy').textContent = project?.analysis || '';
   $('.language-route').innerHTML = `${escape((project?.sourceLanguage || 'en').toUpperCase())} ${icon('arrow-up-right')} PT-BR`;
@@ -371,9 +376,10 @@ async function chooseVideo(file: File) {
   }
 }
 
-function startProcessing(transcribeOnly = false) {
+function startProcessing(transcribeOnly = false, retranscribe = false) {
   if (learning.busy || online.busy) { toast('Conclua ou cancele o processamento atual primeiro.'); return; }
   if (processing || !project || (!currentFile && !project.segments.length)) return;
+  if(retranscribe&&!currentFile){toast('Selecione o vídeo original para refazer a transcrição.');return;}
   if (!window.Worker || !window.WebAssembly) { toast('Este navegador não suporta o processamento local. Use uma versão atual do Chrome, Edge, Firefox ou Safari.'); return; }
   processing = true;
   videoNarration.disable(); narrator.stop();
@@ -413,7 +419,7 @@ function startProcessing(transcribeOnly = false) {
       toast(transcribeOnly ? 'Transcrição local concluída. Você pode enviar os textos selecionados ao Gemini.' : 'Tradução concluída. Dê play e acompanhe as legendas.');
     }
   };
-  worker.postMessage({ sourceLanguage: project.sourceLanguage || 'en', transcribeOnly, file: currentFile, segments: project.segments.length ? project.segments : undefined, baseURL: appURL.href });
+  worker.postMessage({ sourceLanguage: project.sourceLanguage || 'en', transcribeOnly, file: currentFile, segments: !retranscribe&&project.segments.length ? project.segments : undefined, transcriptionQuality:$<HTMLSelectElement>('#transcription-quality').value, baseURL: appURL.href });
 }
 
 async function openProject(id: string) {
@@ -536,6 +542,7 @@ window.addEventListener('drop', event => event.preventDefault());
 
 $('#process').addEventListener('click', () => startProcessing());
 $('#transcribe-only').addEventListener('click', () => startProcessing(true));
+$('#retranscribe-video').addEventListener('click',()=>{if(!project?.segments.length){startProcessing(true,true);return;}dialog(`<h2>Refazer a transcrição?</h2><p>O áudio será transcrito novamente neste dispositivo. A transcrição e as traduções atuais serão substituídas quando a nova transcrição estiver pronta.</p><button class="button primary" id="confirm-retranscription">Refazer transcrição</button>`);$('#confirm-retranscription').addEventListener('click',()=>{$<HTMLDialogElement>('#dialog').close();startProcessing(true,true);});});
 $('#video-source-language').addEventListener('change', async () => { if (!project || processing || online.busy || learning.busy) return; project.sourceLanguage = $<HTMLSelectElement>('#video-source-language').value; await persist(); updateProjectUI(); });
 const videoTexts = () => project?.segments.map((s, i) => ({ id: String(i), original: s.original })) ?? [];
 $('#online-video').addEventListener('click', () => { const target = project; if (!target) return; online.translate(videoTexts(), async values => { videoNarration.disable(); narrator.stop(); for (const value of values) target.segments[Number(value.id)].translated = value.translated; await saveProject(target); await refreshLibrary(); if (project?.id === target.id) { updateProjectUI(); renderTranscript(); updateCaptions(); } await learning.refresh(); if (currentView === 'workspace' && project?.id === target.id) await learning.showVideoResult(target.id); }); });

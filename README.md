@@ -79,7 +79,7 @@ A voz natural usa Faber para português e LJSpeech para inglês, ambas geradas n
 ## Privacidade e armazenamento
 
 - O app não tem servidor de upload de conteúdo ou analytics. Supabase gerencia e-mail, sessões, IP e horários de acesso. A chave pessoal do Gemini, se informada, existe somente na memória da sessão. Os vídeos são reproduzidos com URLs `blob:`. Vídeo e áudio não são enviados para serviços de IA.
-- A interface e os runtimes são servidos pelo Pages. Os modelos de `Xenova/whisper-tiny.en`, `Xenova/whisper-tiny`, `Xenova/opus-mt-en-ROMANCE` e `Xenova/m2m100_418M` são baixados do Hugging Face via HTTPS. Esses downloads são requisições GET sem o conteúdo do vídeo. O provedor de download pode observar os metadados usuais de conexão, como IP e modelo solicitado.
+- A interface e os runtimes são servidos pelo Pages. Os modelos de `Xenova/whisper-base.en`, `Xenova/whisper-base`, `Xenova/whisper-small.en` e `Xenova/whisper-small`, `Xenova/opus-mt-en-ROMANCE` e `Xenova/m2m100_418M` são baixados do Hugging Face via HTTPS. Esses downloads são requisições GET sem o conteúdo do vídeo. O provedor de download pode observar os metadados usuais de conexão, como IP e modelo solicitado.
 - As transcrições, traduções, projetos, subassuntos e imagens das páginas PDF são salvos no IndexedDB deste navegador. O vídeo fica apenas na sessão por padrão; a cópia persistente exige ativar a opção na tela. A atualização do banco preserva os vídeos e legendas criados antes da versão 0.2.
 - O app não criptografa a biblioteca. Use um perfil confiável, principalmente para conteúdo interno. Sites no mesmo domínio/origem compartilham os limites de segurança de armazenamento do navegador; tenha cuidado com outros projetos publicados no mesmo domínio do Pages.
 - Não há sincronização entre celulares e computadores. O navegador pode remover dados por pressão de armazenamento; modo privado, reinstalação e limpeza do site podem apagar a biblioteca. Mantenha os arquivos originais e backups JSON em locais adequados para dados internos.
@@ -187,3 +187,14 @@ Teste opcional da voz real, com o servidor de testes em execução: `npm run tes
 - O vídeo segue em movimento; nenhuma palavra é cortada ao ultrapassar o tempo de uma legenda.
 - Voz local em inglês para termos preservados, opção de leitura do original inglês e ajustes de pronúncia por material.
 - Sem mudança no Supabase nem upload de conteúdo. Atualize ou reabra o PWA para carregar a versão nova.
+
+### Novidades e correções da versão 0.8
+
+- Seletores de projeto, voz e idioma permanecem estáveis durante atualizações da narração.
+- Salvar a organização ou o andamento do projeto preserva o player e a reprodução atual.
+- A preparação das vozes e da narração encerra seu status corretamente; cancelamentos e erros não deixam mensagens de geração presas na tela.
+
+- Recuperação em `/recuperar-senha/`, confirmação em `/confirmar-email/` e nova senha em `/nova-senha/`; alteração pela área de Preferências. Requisitos de senha aparecem no cadastro. Cadastre as URLs no Supabase conforme [o guia de configuração](docs/SUPABASE_SETUP.md#3-configurar-e-mail-e-recuperação-de-senha).
+- PT-BR é o idioma padrão da narração. A voz natural mantém o áudio preparado na memória e reposiciona a leitura ao avançar/voltar no vídeo, inclusive depois do fim. Vozes do sistema retomam a partir do trecho correspondente.
+- Transcrição local reforçada com Whisper Base; Whisper Small é opcional para maior precisão, com mais tempo e memória. Mais contexto na sobreposição e preservação do texto quando os tempos estão ausentes/inválidos. Tempos recuperados a partir do texto são aproximados; reconhecimento ainda pode precisar de revisão.
+- Para materiais anteriores, use **Refazer transcrição do áudio**. A tradução isolada reutiliza o texto existente. Confira o idioma original; mantenha o vídeo local selecionado.
