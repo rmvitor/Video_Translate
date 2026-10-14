@@ -33,6 +33,8 @@ let projects: Project[] = [];
 let currentFile: File | undefined;
 let videoURL = '';
 let captionsURL = '';
+let narrationTrack:TextTrack|undefined;
+let narrationCaptionKey='';
 let worker: Worker | undefined;
 let processing = false;
 let currentView = 'workspace';
@@ -67,7 +69,7 @@ $('#app').innerHTML = `
     <div class="sidebar-bottom">
       <div class="local-card"><span class="local-icon">${icon('hard-drive')}</span><strong>Seu dispositivo. Seu conteúdo.</strong><p>Os vídeos ficam com você.<br>Tradução local ou de texto online.</p><span class="local-indicator"><span></span> Processamento local</span></div>
       <button class="install-button" id="install">${icon('monitor-smartphone')}<span>Instalar aplicativo</span>${icon('arrow-up-right')}</button>
-      <div class="sidebar-footer">Feito para compreender, sem barreiras.<span>v0.8.1 · PWA</span></div>
+      <div class="sidebar-footer">Feito para compreender, sem barreiras.<span>v0.8.2 · PWA</span></div>
     </div>
   </aside>
   <div class="app-content">
@@ -86,7 +88,7 @@ $('#app').innerHTML = `
             </div>
             <div class="player-info"><div><strong id="file-title">Seu próximo treinamento</strong><span id="file-detail">Adicione um vídeo para começar</span></div><span class="language-route">EN ${icon('arrow-up-right')} PT-BR</span></div>
             <div class="player-toolbar"><label class="checkbox-label"><input type="checkbox" id="remember" /><span>Guardar vídeo neste dispositivo</span><button class="icon-button" data-action="storage-help" aria-label="Como funciona o armazenamento local">${icon('circle-help')}</button></label><label class="caption-select">${icon('captions')}<select id="caption-language" aria-label="Idioma das legendas"><option value="translated">Português</option><option value="original">Original</option><option value="both">Os dois idiomas</option><option value="off">Sem legenda</option></select></label></div>
-            <div class="narration-panel material-playback"><h3>Narração</h3><div class="narration-toggles"><label><input type="checkbox" id="video-narration" />${icon('volume-2')}<span id="video-narration-label">Narrar em PT-BR</span></label><label><input type="checkbox" id="mute-original" />Silenciar áudio original</label></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local do vídeo"></select></label><label>Velocidade<select data-voice-rate aria-label="Velocidade da narração do vídeo"><option value="0.8">0,8×</option><option value="1">1×</option><option value="1.2">1,2×</option><option value="1.5">1,5×</option></select></label></div><p id="narration-status" aria-live="polite">Narração contínua em PT-BR. Prepare as vozes antes do primeiro uso; o vídeo segue sem pausas automáticas.</p></div>
+            <div class="narration-panel material-playback"><h3>Narração</h3><div class="narration-toggles"><label><input type="checkbox" id="video-narration" />${icon('volume-2')}<span id="video-narration-label">Narrar em PT-BR</span></label><label><input type="checkbox" id="mute-original" />Silenciar áudio original</label></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local do vídeo"></select></label><span class="voice-note">A voz natural ajusta a velocidade por trecho para acompanhar o vídeo. Para acelerar ou reduzir, use a velocidade do player.</span></div><p id="narration-status" aria-live="polite">Narração contínua em PT-BR. Prepare as vozes antes do primeiro uso; o vídeo segue sem pausas automáticas.</p></div>
             <section class="material-tools process-area" id="video-tools" aria-label="Transcrição e tradução do vídeo">
               <div class="tools-heading"><h3 id="process-title">Transcrição e tradução</h3><span id="video-text-state" class="tools-status">Sem transcrição</span></div>
               <div class="source-settings tools-fields"><label>Idioma original<select id="video-source-language">${LANGUAGES.map(([code, label]) => `<option value="${code}">${label}</option>`).join('')}</select></label><label id="transcription-quality-field">Precisão da transcrição<select id="transcription-quality" aria-describedby="transcription-quality-help"><option value="small">Alto padrão — Whisper Small.en</option><option value="base" selected>Médio — Whisper Base.en</option></select></label></div>
@@ -129,7 +131,7 @@ const online = createOnlineAssistant({ toast, dialog, isBusy: () => processing |
 const videoNarration = new VideoNarration($<HTMLVideoElement>('#video'), narrator, () => project?.segments ?? [], message => {
   $('#narration-status').textContent = message;
   $<HTMLInputElement>('#video-narration').checked = videoNarration.enabled;
-}, $<HTMLInputElement>('#mute-original'), () => ({sourceLanguage:project?.sourceLanguage,englishTerms:project?.pronunciationTerms}));
+}, $<HTMLInputElement>('#mute-original'), () => ({sourceLanguage:project?.sourceLanguage,englishTerms:project?.pronunciationTerms}),()=>{syncNarrationCaptions();updateActiveSegment();});
 learning = createLearningArea({
   toast, icons, dialog, changeView, narrator, online, currentView: () => currentView, accountEpoch: () => localEpoch, isBusy: () => processing || online.busy || Boolean(backups?.busy) || !access?.granted,
   stopMedia: () => { videoNarration.disable(); $<HTMLVideoElement>('#video').pause(); },
@@ -320,8 +322,16 @@ function updateCaptions() {
   video.querySelectorAll('track').forEach(track => track.remove());
   if (captionsURL) URL.revokeObjectURL(captionsURL);
   captionsURL = '';
+  if(narrationTrack){for(const cue of [...(narrationTrack.cues||[])])narrationTrack.removeCue(cue);narrationTrack.mode='disabled';}
+  narrationCaptionKey='';
   const language = $<HTMLSelectElement>('#caption-language').value;
   if (!project?.segments.length || language === 'off') return;
+  if(videoNarration.enabled&&narrator.ready){
+    // A source-less HTML <track> can asynchronously clear programmatic cues.
+    // Reuse one script-created track, which never has a resource load task.
+    narrationTrack??=video.addTextTrack('subtitles','Narração','pt-BR');
+    narrationTrack.mode='showing';syncNarrationCaptions();return;
+  }
   const captions = project.segments.map(s => ({ ...s, translated: language === 'both' ? `${s.translated || s.original}\n${s.translated ? s.original : ''}` : language === 'original' ? s.original : s.translated || s.original }));
   captionsURL = URL.createObjectURL(new Blob([exportSubtitles(captions, 'translated', 'vtt')], { type: 'text/vtt' }));
   const track = document.createElement('track');
@@ -332,6 +342,19 @@ function updateCaptions() {
   track.default = true;
   video.append(track);
   track.track.mode = 'showing';
+}
+
+function syncNarrationCaptions(){
+  const video=$<HTMLVideoElement>('#video'),language=$<HTMLSelectElement>('#caption-language').value;
+  if(!videoNarration.enabled||!narrator.ready){if(narrationTrack?.mode==='showing')updateCaptions();return;}
+  if(language==='off')return;
+  if(narrationTrack?.mode!=='showing'){updateCaptions();return;}
+  const index=videoNarration.currentCue,key=`${index}:${language}`;
+  if(narrationCaptionKey===key)return;narrationCaptionKey=key;
+  for(const cue of [...(narrationTrack.cues||[])])narrationTrack.removeCue(cue);
+  const segment=index===undefined?undefined:project?.segments[index];if(!segment)return;
+  const text=language==='both'?`${segment.translated||segment.original}\n${segment.translated?segment.original:''}`:language==='original'?segment.original:segment.translated||segment.original;
+  narrationTrack.addCue(new VTTCue(0,Math.max(.1,(video.duration||project?.duration||0)+.1),text));
 }
 
 function cancelProcessing(silent = false) {
@@ -353,7 +376,6 @@ async function chooseVideo(file: File) {
     return;
   }
   const attaching = attachToProject;
-  const returnToLibrary = attaching && currentView === 'library';
   attachToProject = false;
   const previous = project;
   const previousFile = currentFile;
@@ -386,11 +408,12 @@ async function chooseVideo(file: File) {
     active = -1;
     $<HTMLInputElement>('#search').value = '';
     $('#error-panel').hidden = true;
-    changeView('workspace');
+    // Reattaching a local file completes asynchronously. Keep the reader and
+    // navigation the user has already chosen while its metadata was loading.
+    if(!attaching)changeView('workspace');
     updateProjectUI(); renderTranscript(); updateCaptions();
     await persist();
-    if (returnToCourse && project?.collectionId) await learning.showVideoInProject(project.id);
-    else if (returnToLibrary && project) await learning.openLibraryMaterial(project.id, 'video');
+    if (!attaching && returnToCourse && project?.collectionId) await learning.showVideoInProject(project.id);
   } catch (error) {
     if (epoch !== localEpoch) return;
     project = previous; currentFile = previousFile;
@@ -605,9 +628,9 @@ $('#remember').addEventListener('change', async () => {
   await persist(); updateProjectUI();
 });
 
-$<HTMLVideoElement>('#video').addEventListener('timeupdate', () => {
+function updateActiveSegment(){
   if (!project) return;
-  const next = activeSegment(project.segments, $<HTMLVideoElement>('#video').currentTime);
+  const next = videoNarration.enabled&&narrator.ready ? videoNarration.currentCue??-1 : activeSegment(project.segments, $<HTMLVideoElement>('#video').currentTime);
   if (active === next) return;
   active = next;
   document.querySelectorAll('.segment').forEach(el => el.classList.toggle('is-active', el.getAttribute('data-segment') === String(active)));
@@ -619,7 +642,8 @@ $<HTMLVideoElement>('#video').addEventListener('timeupdate', () => {
       if (offset < 0 || offset + row.offsetHeight > pane.clientHeight) pane.scrollTo({ top: pane.scrollTop + offset - 12, behavior: 'smooth' });
     }
   }
-});
+}
+$<HTMLVideoElement>('#video').addEventListener('timeupdate',updateActiveSegment);
 
 $('#import-captions').addEventListener('click', () => {
   if (!project) { toast('Adicione um vídeo primeiro para associar as legendas.'); return; }

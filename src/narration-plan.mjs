@@ -79,3 +79,25 @@ export function narrationPosition(segments, marks, duration, time) {
   const fraction=Math.min(1,Math.max(0,(time-cue.start)/Math.max(.001,cue.end-cue.start)));
   return {offset:cue.audioStart+(end-cue.audioStart)*fraction,startsAt:Math.max(time,cue.start),finished:false};
 }
+
+// Video cues are synthesized separately, then concatenated into one local WAV.
+// Their marks are actual sample boundaries, not character-based estimates.
+/** @param {ReadingItem[]} items @returns {Chunk[]} */
+export function buildVideoNarrationPlan(items,mode='pt-BR',terms='') {
+  if(items.reduce((sum,item)=>sum+(mode==='en-US'?item.original||'':item.text).length,0)>60000)throw new Error('Texto muito longo para uma única narração. Leia uma parte por vez.');
+  return items.flatMap(item=>buildNarrationPlan([item],mode,terms));
+}
+export function narrationCueTiming(segments,marks,duration,id){
+  const starts=new Map();for(const mark of marks)if(!starts.has(mark.id))starts.set(mark.id,mark.start);
+  const ids=[...starts.keys()],index=ids.indexOf(String(id)),segment=segments[Number(id)];
+  if(index<0||!segment)return null;
+  return {id:Number(id),videoStart:segment.start,videoEnd:segment.end,audioStart:starts.get(String(id)),audioEnd:starts.get(ids[index+1])??duration};
+}
+export function narrationRate(timing,audioTime,videoTime,videoRate=1){
+  const span=timing.videoEnd-timing.videoStart,nominal=(timing.audioEnd-timing.audioStart)/Math.max(.001,span)*videoRate;
+  // Correct small clock drift with pace, preserving every word. Long cues may
+  // exceed the natural speed range; captions then follow the spoken cue.
+  const target=timing.audioStart+Math.min(span,Math.max(0,videoTime-timing.videoStart))*nominal/videoRate;
+  const correction=nominal>=.6&&nominal<=2?Math.min(.12,Math.max(-.12,(target-audioTime)*.35)):0;
+  return Math.min(2,Math.max(.6,nominal+correction));
+}

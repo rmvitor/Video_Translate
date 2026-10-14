@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildNarrationPlan,pronunciationRuns,playbackRateForVideo} from '../src/narration-plan.mjs';
+import {buildNarrationPlan,buildVideoNarrationPlan,narrationCueTiming,narrationRate,pronunciationRuns,playbackRateForVideo} from '../src/narration-plan.mjs';
 import {trimPadding,pcm16,encodeWav} from '../src/voice-audio.mjs';
 
 test('continuous planning joins Portuguese sections without dropping words or section markers',()=>{
@@ -50,4 +50,24 @@ test('default narration stays Portuguese and cached audio seeking follows cues w
  assert.deepEqual(narrationPosition(segments,marks,6,.75),{offset:3,startsAt:1,finished:false});
  assert.deepEqual(narrationPosition(segments,marks,6,1.5),{offset:4.5,startsAt:1.5,finished:false});
  assert.deepEqual(narrationPosition(segments,marks,6,2),{offset:6,startsAt:2,finished:true});
+});
+
+test('video synthesis retains words and creates sample-aligned boundaries for unequal cue lengths',()=>{
+ const items=[{id:'0',text:'Confira cada uma das etapas antes de continuar.'},{id:'1',text:'Pronto.'}];
+ const chunks=buildVideoNarrationPlan(items);
+ assert.equal(chunks.map(chunk=>chunk.text).join(' '),items.map(item=>item.text).join(' '));
+ assert.deepEqual(chunks.map(chunk=>chunk.marks),[[{id:'0',offset:0}],[{id:'1',offset:0}]]);
+ const mixed=buildVideoNarrationPlan([{id:'0',text:'Abra Insight agora.'},{id:'1',text:'Confira Home Management.'}],'mixed');
+ assert.ok(mixed.every(chunk=>chunk.marks.length===1&&chunk.marks[0].offset===0));
+ assert.throws(()=>buildVideoNarrationPlan([{id:'0',text:'A '.repeat(16000)},{id:'1',text:'B '.repeat(16000)}]),/muito longo/);
+ const segments=[{start:0,end:5},{start:6,end:8}],marks=[{id:'0',start:0},{id:'0',start:1},{id:'1',start:4}];
+ assert.deepEqual(narrationCueTiming(segments,marks,7,'0'),{id:0,videoStart:0,videoEnd:5,audioStart:0,audioEnd:4});
+ assert.deepEqual(narrationCueTiming(segments,marks,7,'1'),{id:1,videoStart:6,videoEnd:8,audioStart:4,audioEnd:7});
+ assert.equal(narrationCueTiming(segments,marks,7,'2'),null);
+ // Per-cue pace is .8x then 1.5x rather than a single global ratio.
+ assert.equal(narrationRate(narrationCueTiming(segments,marks,7,'0'),2,2.5),.8);
+ assert.equal(narrationRate(narrationCueTiming(segments,marks,7,'1'),5.5,7),1.5);
+ assert.equal(narrationRate(narrationCueTiming(segments,marks,7,'1'),5.5,7,1.25),1.875);
+ assert.equal(narrationRate({videoStart:0,videoEnd:1,audioStart:0,audioEnd:8},0,0),2);
+ assert.equal(narrationRate({videoStart:0,videoEnd:10,audioStart:0,audioEnd:1},0,0),.6);
 });

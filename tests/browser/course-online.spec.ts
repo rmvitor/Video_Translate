@@ -134,6 +134,21 @@ test('malformed Gemini response and quota errors do not overwrite translations',
   quota = true; await page.locator('#send-online').click(); await expect(page.locator('#online-error')).toContainText('Cota');
 });
 
+test('Gemini 403 identifies a restricted website and sends only the public origin as referrer',async({page,context})=>{
+ const sent:any[]=[];
+ await context.route(endpoint,route=>{
+   sent.push({method:route.request().method(),headers:route.request().headers(),body:route.request().postData()});
+   return route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({error:{message:'Do not display dummy-test-key-never-real or confidential text',details:[{'@type':'type.googleapis.com/google.rpc.ErrorInfo',reason:'API_KEY_HTTP_REFERRER_BLOCKED'}]}})});
+ });
+ await seed(page);await course(page);await page.locator('#pdf-task').selectOption('gemini');await page.locator('#online-pdf').click();
+ await page.locator('#review-gemini-key').fill(dummyKey);await page.locator('#online-consent').check();await page.locator('#send-online').click();
+ await expect(page.locator('#online-error')).toContainText('https://rmvitor.github.io/*');await expect(page.locator('#online-error')).not.toContainText(dummyKey);await expect(page.locator('#apply-online')).toHaveCount(0);
+ expect(sent).toHaveLength(1);expect(sent[0].method).toBe('POST');expect(sent[0].headers.referer).toBe('http://127.0.0.1:4173/');expect(sent[0].body).not.toContain('secret-welcome.pdf');
+ expect((await readDB(page,'documents','pdf')).pages[0].blocks.every((block:any)=>block.translated==='')).toBe(true);
+ await page.locator('#dialog [data-action="close-dialog"]').click();await page.getByRole('button',{name:'Preferências',exact:true}).click();await page.locator('#check-gemini-models').click();
+ await expect(page.locator('#gemini-model-status')).toContainText('HTTP 403');expect(sent).toHaveLength(2);expect(sent[1].method).toBe('GET');expect(sent[1].headers.referer).toBe('http://127.0.0.1:4173/');expect(sent[1].body).toBe(null);
+});
+
 test('library tabs separate PDF/video and share local readers with projects without duplicate players',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await seed(page);

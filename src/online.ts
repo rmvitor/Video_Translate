@@ -7,8 +7,13 @@ export function createOnlineAssistant(options: Options) {
   let model = '', automaticModel = '', catalogue: {id:string;name:string}[] = [];
   let catalogueController:AbortController|undefined;
   const settings = document.querySelector('#online-fields')!;
+  // A restricted browser key needs a referrer. Send only the public origin,
+  // never an Auth callback URL, query, fragment, project or filename.
+  const originReferrer:Pick<RequestInit,'referrer'|'referrerPolicy'> = {referrer:new URL('/',location.href).href,referrerPolicy:'origin'};
+  const providerError=async(response:Response)=>geminiError(response.status,await response.json().catch(()=>({})));
   settings.innerHTML = `<p class="settings-status">Google Gemini pode traduzir e analisar somente os textos que você selecionar. Vídeos, áudio, PDFs e imagens não são enviados. O uso depende da sua chave e cota do serviço.</p><label class="field-label">Chave Gemini (somente nesta sessão)<input id="settings-gemini-key" type="password" autocomplete="off" spellcheck="false" placeholder="Informe sua chave pessoal" /></label><div class="inline-actions"><button class="button secondary" id="set-session-key">Usar nesta sessão</button><button class="text-button" id="forget-session-key">Esquecer chave</button></div><p class="settings-status" id="key-status">Nenhuma chave carregada.</p><a class="text-button" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Gerenciar chave no Google AI Studio ↗</a>`;
   settings.insertAdjacentHTML('beforeend', `<label class="field-label">Modelo Gemini<select id="gemini-model"><option value="">Automático</option></select></label><button class="button secondary" id="check-gemini-models">Verificar chave e modelos</button><p class="settings-status" id="gemini-model-status" role="status">A consulta verifica os modelos disponíveis na sua chave, sem enviar textos.</p>`);
+  settings.insertAdjacentHTML('beforeend', `<details class="material-more"><summary>Como configurar e resolver erros</summary><ol><li>Crie uma chave de API no Google AI Studio para o seu projeto.</li><li>Informe a chave acima e clique em Verificar chave e modelos. Escolha um modelo de texto disponível.</li><li>No vídeo, transcreva o áudio primeiro. Em vídeo ou PDF, escolha Traduzir com Gemini, revise os trechos e autorize o envio.</li><li>Revise a resposta antes de aplicar. A chave é esquecida ao sair da conta ou fechar o aplicativo.</li></ol><p><strong>HTTP 403:</strong> confira a Generative Language API e as restrições da chave. Para este site, permita <code>https://rmvitor.github.io/*</code>. A consulta envia apenas a origem pública como referência, sem o caminho ou dados da conta.</p><p>Alguns modelos oferecem cota gratuita, conforme região e projeto; outros exigem faturamento. A assinatura do aplicativo Gemini não substitui a configuração da API. HTTP 429 indica limite de uso. Verificar modelos não garante cota para gerar respostas.</p><p>Texto interno também pode ser confidencial. Confira a política da empresa e os termos de uso de dados do plano escolhido antes de enviar.</p><a class="text-button" href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener noreferrer">Cotas e preços ↗</a> <a class="text-button" href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener noreferrer">Termos de uso de dados ↗</a></details>`);
   const updateStatus = () => { document.querySelector('#key-status')!.textContent = key ? 'Chave disponível somente na memória desta sessão.' : 'Nenhuma chave carregada.'; };
   const renderModels = () => {
     const select = document.querySelector<HTMLSelectElement>('#gemini-model')!;
@@ -20,8 +25,8 @@ export function createOnlineAssistant(options: Options) {
     const found:{id:string;name:string}[]=[];let page='';
     for(let count=0;count<5;count++) {
       const url=new URL(GEMINI_MODELS_ENDPOINT);url.searchParams.set('pageSize','100');if(page)url.searchParams.set('pageToken',page);
-      const response=await fetch(url,{headers:{'X-Goog-Api-Key':secret},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(20000)]):AbortSignal.timeout(20000)});
-      if(!response.ok)throw new Error(geminiError(response.status));
+      const response=await fetch(url,{...originReferrer,headers:{'X-Goog-Api-Key':secret},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(20000)]):AbortSignal.timeout(20000)});
+      if(!response.ok)throw new Error(await providerError(response));
       const data=await response.json();found.push(...availableTextModels(data));page=typeof data.nextPageToken==='string'?data.nextPageToken:'';if(!page)break;
     }
     if(!found.length)throw new Error('Nenhum modelo Gemini de texto disponível nesta chave. Confira o projeto e as permissões no Google AI Studio.');
@@ -35,7 +40,7 @@ export function createOnlineAssistant(options: Options) {
     if(!key){status.textContent='Informe a chave Gemini antes de verificar.';return;}
     if(busy)return;button.disabled=true;status.textContent='Consultando os modelos disponíveis…';
     const secret=key;catalogueController=new AbortController();
-    try{const found=await loadModels(secret,catalogueController.signal);if(key!==secret)return;status.textContent=`Chave verificada: ${found.length} modelos de texto disponíveis. Automático: ${automaticModel}.`;}
+    try{const found=await loadModels(secret,catalogueController.signal);if(key!==secret)return;status.textContent=`Chave aceita para consultar: ${found.length} modelos de texto disponíveis. Automático: ${automaticModel}. A geração depende das permissões e cotas do projeto.`;}
     catch(err){if(key===secret)status.textContent=err instanceof Error?err.message:'Não foi possível consultar os modelos.';}
     finally{button.disabled=false;}
   });
@@ -63,14 +68,14 @@ export function createOnlineAssistant(options: Options) {
       const send = document.querySelector<HTMLButtonElement>('#send-online')!; send.disabled = true; send.textContent = 'Consultando o Gemini…';
       try {
         const chosen=model||automaticModel;
-        const request=(selected:string)=>fetch(selected?geminiEndpoint(selected):GEMINI_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json','X-Goog-Api-Key':secret},body:JSON.stringify(body),signal:AbortSignal.any([cancelSignal,AbortSignal.timeout(90000)])});
+        const request=(selected:string)=>fetch(selected?geminiEndpoint(selected):GEMINI_ENDPOINT,{...originReferrer,method:'POST',headers:{'Content-Type':'application/json','X-Goog-Api-Key':secret},body:JSON.stringify(body),signal:AbortSignal.any([cancelSignal,AbortSignal.timeout(90000)])});
         let response=await request(chosen);
         if(response.status===404&&!model){
           send.textContent='Buscando um modelo disponível…';
           const available=await loadModels(secret,cancelSignal),fallback=preferredTextModel(available,chosen||'gemini-2.5-flash');
           if(!fallback)throw new Error(geminiError(404));automaticModel=fallback.id;response=await request(fallback.id);
         }
-        if (!response.ok) throw new Error(geminiError(response.status));
+        if (!response.ok) throw new Error(await providerError(response));
         const result = await response.json();
         const text = result.candidates?.[0]?.content?.parts?.filter((part: { thought?: boolean; text?: string }) => !part.thought).map((part: { text?: string }) => part.text ?? '').join('');
         if (!text) throw new Error('O Gemini não retornou um texto utilizável. Nenhuma alteração foi aplicada.');

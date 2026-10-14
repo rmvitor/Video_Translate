@@ -113,6 +113,15 @@ test('projects and subjects organize a real PDF, preserving images, revisions an
 });
 
 test('continuous narration keeps every cue without auto-pausing the video and respects manual pause and seek', async ({ page }) => {
+  // Metadata may arrive after a user has already opened the library reader.
+  // Force that ordering so file attachment cannot silently change the view.
+  await page.addInitScript(()=>{
+    const add=HTMLMediaElement.prototype.addEventListener;
+    HTMLMediaElement.prototype.addEventListener=function(name:any,listener:any,options:any){
+      if(name==='loadedmetadata'&&listener?.name==='loaded')return add.call(this,name,function(event:Event){setTimeout(()=>listener(event),800);},options);
+      return add.call(this,name,listener,options);
+    } as typeof add;
+  });
   await localVoiceFixture(page); await page.goto('./');
   await page.locator('#project-input').setInputFiles({ name: 'project.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ version: 1, title: 'Treinamento', filename: 'training.mp4', duration: 4, segments: [{ start: 0, end: .5, original: 'Welcome.', translated: 'Boas-vindas ao treinamento.' }, { start: .8, end: 3.9, original: 'Let us start.', translated: 'Vamos começar a aprender.' }] })) });
   await page.locator('#reattach-button').click();
@@ -129,6 +138,7 @@ test('continuous narration keeps every cue without auto-pausing the video and re
   await expect.poll(()=>page.locator('#video').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(1.1);
   expect(await page.locator('#video').evaluate((v:HTMLVideoElement)=>v.paused)).toBe(false);
   expect(await page.evaluate(()=>(window as any).__speech.utterances.length)).toBe(1);
+  await expect(page.locator('#library-outlet #workspace-view')).toBeVisible();
   await page.locator('#video').evaluate((v: HTMLVideoElement) => v.pause());
   expect(await page.evaluate(() => (window as any).__speech.paused)).toBe(true);
   await page.locator('#video').evaluate((v: HTMLVideoElement) => { v.currentTime = 1.2; });
@@ -283,7 +293,20 @@ test('local voice preparation completes its status and cancellation ignores late
     await expect(page.locator('#narration-status')).toHaveText('Narração contínua pronta. Dê play para ouvir.');
     expect(await page.evaluate(()=>(window as any).__voiceElement.src)).toBe(source);expect(await page.evaluate(()=>(window as any).__voiceJobs)).toBe(1);
     expect(await page.locator('#video').evaluate((video:HTMLVideoElement)=>video.paused)).toBe(true);
+    const caption=time>=2.1?'Continue o treinamento.':'Boas-vindas.';
+    await expect.poll(()=>page.locator('#video').evaluate((video:HTMLVideoElement)=>(video.textTracks[0]?.cues?.[0] as VTTCue)?.text)).toBe(caption);
+    await expect(page.locator('.segment.is-active .translation')).toHaveText(caption);
   }
+  // A slow or long spoken cue must keep its own caption even when the source
+  // video timestamp has already entered the next cue.
+  await page.locator('#video').evaluate((video:HTMLVideoElement)=>{video.currentTime=2.8;});
+  await expect.poll(()=>page.locator('#video').evaluate((video:HTMLVideoElement)=>video.seeking)).toBe(false);
+  await page.evaluate(()=>{const audio=(window as any).__voiceElement;audio.currentTime=.2;audio.dispatchEvent(new Event('timeupdate'));});
+  await expect.poll(()=>page.locator('#video').evaluate((video:HTMLVideoElement)=>(video.textTracks[0]?.cues?.[0] as VTTCue)?.text)).toBe('Boas-vindas.');
+  await expect(page.locator('.segment.is-active .translation')).toHaveText('Boas-vindas.');
+  await page.locator('#caption-language').selectOption('both');await expect.poll(()=>page.locator('#video').evaluate((video:HTMLVideoElement)=>(video.textTracks[0]?.cues?.[0] as VTTCue)?.text)).toBe('Boas-vindas.\nWelcome.');
+  await page.locator('#caption-language').selectOption('off');await expect.poll(()=>page.locator('#video').evaluate((video:HTMLVideoElement)=>Array.from(video.textTracks).filter(track=>track.mode==='showing').length)).toBe(0);
+  await page.locator('#caption-language').selectOption('translated');
   await page.locator('#video-narration').uncheck();await page.locator('#video-narration').check();await page.evaluate(()=>(window as any).__voiceProgress());await page.locator('#video-narration').uncheck();
   await expect(status).toHaveText('Narração interrompida.');await page.evaluate(()=>(window as any).__voiceProgress());await expect(status).toHaveText('Narração interrompida.');
   await page.locator('[data-prepare-voice]').filter({visible:true}).click();await expect(page.locator('[data-prepare-voice]').filter({visible:true})).toBeDisabled();

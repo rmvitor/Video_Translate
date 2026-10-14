@@ -207,3 +207,10 @@ Vídeos e páginas usam o mesmo painel: idioma, escolha da ação, explicação 
 - **Transcrever e traduzir:** gera texto e PT-BR localmente em vídeos novos; quando a transcrição existe, traduz o texto atual.
 - **Traduzir com Gemini:** usa somente o texto já disponível, selecionado e autorizado. Vídeo, áudio, PDF e imagens permanecem locais.
 - **Alto padrão — Whisper Small** e **Médio — Whisper Base** identificam os modelos de reconhecimento; `.en` aparece para áudio em inglês. Médio continua sendo a escolha inicial; Alto padrão exige mais memória e tempo. O seletor aparece quando a ação reconhece áudio.
+
+### Sincronia e diagnóstico da versão 0.8.2
+
+- A voz natural de vídeo usa limites reais de áudio por trecho, ajusta a velocidade por trecho e mantém legenda e destaque ligados à fala. Avançar/voltar reutiliza a narração em memória, inclusive depois da conclusão, sem pausar o vídeo automaticamente. O posicionamento dentro de um trecho ainda é proporcional; traduções longas podem atrasar em relação à cena para preservar todas as palavras.
+- Vincular novamente o arquivo local preserva a tela escolhida durante o carregamento, sem fechar a biblioteca ou interromper a narração iniciada pelo usuário.
+- O Gemini informa causas de HTTP 403 quando o provedor fornece o motivo. Chamadas enviam apenas a origem pública como referência para permitir chaves restritas por site, sem expor URLs de recuperação. Veja [configuração, cota gratuita e diagnóstico](docs/GEMINI_SETUP.md).
+- Foi realizada uma [avaliação da tradução local para cursos empresariais](docs/QUALITY_REVIEW.md), com 12 frases sintéticas e resultados reais. Ela encontrou alteração de números, perda de condições e termos inadequados. A tradução atual deve ser tratada como rascunho sujeito a revisão. O documento prioriza glossário, aprovação, avaliação representativa, OCR local e alinhamento por palavra.

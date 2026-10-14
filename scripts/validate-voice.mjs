@@ -15,6 +15,8 @@ try{
   await context.addInitScript(()=>{
     const original=HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play=function(){const media=this;return original.call(this).then(()=>{if(media instanceof HTMLAudioElement)(window).__testVoiceAudio=media;});};
+    const NativeWorker=window.Worker;
+    window.Worker=class extends NativeWorker{constructor(url,options){super(url,options);if(String(url).includes('neural-voice.worker'))this.addEventListener('message',event=>{if(event.data.type==='audio')window.__voiceMarks=event.data.marks;});}};
   });
   const page=await context.newPage();await page.bringToFront();for(const other of context.pages())if(other!==page)await other.close();page.on('requestfailed',request=>console.log('Voice asset request failed: '+new URL(request.url()).pathname+' '+request.failure()?.errorText));page.on('crash',()=>console.log('Voice test renderer crashed.'));page.on('console',msg=>{if(msg.type()==='error')console.log('Browser runtime error: '+msg.text().slice(0,250));else if(msg.text().startsWith('Generating local voice:')||msg.text().startsWith('Voice progress:'))console.log(msg.text());});
   await page.goto('http://127.0.0.1:4173/Video_Translate/');await page.locator('#app').waitFor({state:'visible'});
@@ -62,22 +64,32 @@ try{
   },Array.from(await readFile(videoFile)));
   await page.reload();await page.locator('#app').waitFor({state:'visible'});
   await page.getByRole('button',{name:'Minha biblioteca'}).click();await page.getByRole('tab',{name:'Vídeos',exact:true}).click();await page.locator('[data-open="public-video"]').click();
-  await page.locator('#video-settings > summary').click();if(await page.locator('[data-narration-language]').filter({visible:true}).inputValue()!=='pt-BR')throw new Error('Portuguese must be the default');await page.locator('[data-narration-language]').filter({visible:true}).selectOption('mixed');
+  await page.locator('#video-settings > summary').click();if(await page.locator('[data-narration-language]').filter({visible:true}).inputValue()!=='pt-BR')throw new Error('Portuguese must be the default');
   await page.locator('#video-narration').check();await page.locator('#library-outlet #workspace-view').waitFor({state:'visible'});await page.waitForFunction(()=>document.querySelector('#narration-status').textContent==='Narração contínua pronta. Dê play para ouvir.',undefined,{timeout:180000});
   await page.evaluate(()=>{window.__testVoiceAudio=undefined;window.__automaticPauses=0;window.__pauseDetails=[];document.querySelector('#video').addEventListener('pause',event=>{window.__pauseDetails.push({time:event.target.currentTime,ended:event.target.ended});if(!event.target.ended&&event.target.currentTime>.1&&event.target.currentTime<event.target.duration-.1)window.__automaticPauses++;});});
   await page.locator('#video').evaluate(video=>video.play());await page.waitForFunction(()=>window.__testVoiceAudio?.duration>.3&&!window.__testVoiceAudio.paused);
   await page.waitForFunction(()=>document.querySelector('#video').currentTime>1.3);
   if(await page.locator('#video').evaluate(video=>video.paused)||await page.evaluate(()=>window.__automaticPauses!==0))throw new Error('Narration automatically paused the video: '+JSON.stringify(await page.evaluate(()=>({time:document.querySelector('#video').currentTime,ended:document.querySelector('#video').ended,pauses:window.__pauseDetails}))));
   const preparedURL=await page.evaluate(()=>window.__testVoiceAudio.src);
+  const marks=await page.evaluate(()=>window.__voiceMarks);
+  if(marks.length!==2||marks[0].id!=='0'||marks[0].start!==0||marks[1].id!=='1'||marks[1].start<=0)throw new Error('Video cue boundaries were not generated separately: '+JSON.stringify(marks));
   await page.locator('#video').evaluate(video=>video.pause());if(!await page.evaluate(()=>window.__testVoiceAudio.paused))throw new Error('Manual video pause did not pause narration');
-  await page.locator('#video').evaluate(video=>{video.currentTime=1.5;});await page.waitForFunction(()=>document.querySelector('#narration-status').textContent==='Narração contínua pronta. Dê play para ouvir.',undefined,{timeout:180000});
-  if(!await page.locator('#video').evaluate(video=>video.paused))throw new Error('Seeking resumed a manually paused video');
-  if(await page.evaluate(()=>window.__testVoiceAudio.src)!==preparedURL)throw new Error('Seeking regenerated the prepared narration');
+  for(const time of [1.5,0,12,1.5]){
+    await page.locator('#video').evaluate((video,time)=>{video.currentTime=time;},time);
+    await page.waitForFunction(()=>!document.querySelector('#video').seeking&&document.querySelector('#narration-status').textContent==='Narração contínua pronta. Dê play para ouvir.');
+    if(!await page.locator('#video').evaluate(video=>video.paused))throw new Error('Seeking resumed a manually paused video');
+    if(await page.evaluate(()=>window.__testVoiceAudio.src)!==preparedURL)throw new Error('Seeking regenerated the prepared narration');
+    const text=time===0?'Abra o Insight.':'Confira Home Management e prossiga com todos os dados.';
+    await page.waitForFunction(text=>Array.from(document.querySelector('#video').textTracks).find(track=>track.mode==='showing')?.cues?.[0]?.text===text&&document.querySelector('.segment.is-active .translation')?.textContent===text,text);
+  }
+  await page.locator('#caption-language').selectOption('both');
+  await page.waitForFunction(()=>Array.from(document.querySelector('#video').textTracks).find(track=>track.mode==='showing')?.cues?.[0]?.text==='Confira Home Management e prossiga com todos os dados.\nCheck Home Management and proceed with all data.');
+  await page.locator('#caption-language').selectOption('translated');
   await page.locator('#video').evaluate(video=>video.play());await page.waitForFunction(()=>document.querySelector('#video').ended);
   await page.waitForFunction(()=>document.querySelector('#narration-status').textContent==='Narração concluída.',undefined,{timeout:60000});
   await page.locator('#video').evaluate(video=>{video.currentTime=0;});await page.waitForFunction(()=>document.querySelector('#narration-status').textContent==='Narração contínua pronta. Dê play para ouvir.');if(await page.evaluate(()=>window.__testVoiceAudio.src)!==preparedURL)throw new Error('Rewinding after completion regenerated narration');
   await page.locator('#video-narration').uncheck();if(await page.locator('#video').evaluate(video=>video.muted))throw new Error('Original mute state was not restored');
-  console.log('Real continuous bilingual video playback, manual pause, seek and complete narration passed without automatic video pauses.');
+  console.log('Real PT-BR video playback, cue-aligned captions, cached repeated seeks, manual pause and complete narration passed without automatic video pauses.');
   await context.unrouteAll({behavior:'wait'});await localAccessFixture(context);await context.setOffline(true);
   const offline=await run(true);if(offline.some(audio=>audio.peak<100||audio.seconds<.3))throw new Error('Offline voice failed');
   console.log('Fresh voice worker generated Portuguese, English and continuous bilingual audio offline from cached models:',JSON.stringify(offline));

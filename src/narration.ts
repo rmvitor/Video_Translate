@@ -1,5 +1,5 @@
 import type { Segment } from './types';
-import { buildNarrationPlan, playbackRateForVideo, narrationPosition } from './narration-plan.mjs';
+import { buildNarrationPlan, buildVideoNarrationPlan, playbackRateForVideo, narrationPosition, narrationCueTiming, narrationRate } from './narration-plan.mjs';
 
 export type ReadingItem = {id:string;text:string;original?:string;sourceLanguage?:string};
 export type NarrationLanguage='mixed'|'pt-BR'|'en-US';
@@ -27,6 +27,9 @@ export class LocalNarrator {
   ready=false;
   preparing=false;
   get duration(){return this.seconds;}
+  get audioPosition(){return this.audio?.currentTime??0;}
+  get audioCue(){if(!this.audio||!this.ready)return undefined;return [...this.audioMarks].reverse().find(mark=>mark.start<=this.audioPosition)?.id;}
+  cueTiming(segments:Segment[]){return this.audioCue===undefined?null:narrationCueTiming(segments,this.audioMarks,this.seconds,this.audioCue);}
   get usesNaturalVoice(){return this.voice.voiceURI===NEURAL_VOICE.voiceURI||(this.language!=='pt-BR'&&!this.englishVoice);}
   seekVideo(segments:Segment[],time:number){
     if(!this.audio||!this.ready)return null;
@@ -90,9 +93,9 @@ export class LocalNarrator {
     }catch(error){if(token===this.token)this.status=error instanceof Error?error.message:'Não foi possível preparar as vozes.';throw error;}
     finally{if(token===this.token){this.preparing=false;this.notify();}}
   }
-  read(items:ReadingItem[],onItem:(id:string)=>void,onFinish:(error?:string)=>void=()=>{},rate=this.rate,options:{paused?:boolean;onReady?:()=>void;retainAudio?:boolean}={}){
+  read(items:ReadingItem[],onItem:(id:string)=>void,onFinish:(error?:string)=>void=()=>{},rate=this.rate,options:{paused?:boolean;onReady?:()=>void;retainAudio?:boolean;alignVideoCues?:boolean}={}){
     this.requireVoice();
-    const chunks=buildNarrationPlan(items,this.language,this.englishTerms);
+    const chunks=(options.alignVideoCues?buildVideoNarrationPlan:buildNarrationPlan)(items,this.language,this.englishTerms);
     this.stop();const token=this.token;
     const finish=(error?:string)=>{
       if(token!==this.token)return;clearTimeout(this.watchdog);
@@ -111,7 +114,7 @@ export class LocalNarrator {
         if(token!==this.token)return;if(!result.audio){finish('A voz local não gerou o áudio. Tente novamente.');return;}
         this.audioURL=URL.createObjectURL(new Blob([result.audio],{type:'audio/wav'}));const audio=new Audio(this.audioURL);this.audio=audio;this.seconds=result.duration||0;this.audioMarks=result.marks||[];
         audio.playbackRate=Math.min(2,Math.max(.6,rate));audio.preservesPitch=true;
-        let last='';const highlight=()=>{const mark=[...(result.marks||[])].reverse().find(m=>m.start<=audio.currentTime);if(mark&&mark.id!==last){last=mark.id;onItem(last);}};
+        const marks=this.audioMarks;let last='';const highlight=()=>{const mark=[...marks].reverse().find(m=>m.start<=audio.currentTime);if(mark&&mark.id!==last){last=mark.id;onItem(last);}};
         audio.ontimeupdate=highlight;audio.onplay=highlight;audio.onended=()=>finish();audio.onerror=()=>finish('Não foi possível reproduzir a narração local.');
         this.ready=true;this.status='Narração contínua pronta.';this.notify();options.onReady?.();
         if(this.state==='reading')void audio.play().catch(()=>finish('Toque em Ler ou dê play novamente para permitir a narração.'));
@@ -143,9 +146,21 @@ export class VideoNarration {
   private manuallyMuted=false;
   private startedAt=0;
   private speechStart=0;
-  constructor(private video:HTMLVideoElement,private narrator:LocalNarrator,private getSegments:()=>Segment[],private onChange:(message:string)=>void,private muteControl:HTMLInputElement,private context:()=>{sourceLanguage?:string;englishTerms?:string}=()=>({})){
-    video.addEventListener('play',()=>this.tick());
-    video.addEventListener('pause',()=>{if(this.enabled&&!video.ended)this.narrator.pause();});
+  private spokenCue:number|undefined;
+  private publishedCue:number|undefined;
+  private frame:number|undefined;
+  get currentCue(){
+    if(!this.enabled||!this.narrator.ready||this.finished)return undefined;
+    const timing=this.narrator.cueTiming(this.getSegments());
+    if(timing)return this.video.currentTime+.03<timing.videoStart&&!this.video.ended?undefined:timing.id;
+    return this.spokenCue;
+  }
+  private publishCue(force=false){const cue=this.currentCue;if(force||cue!==this.publishedCue){this.publishedCue=cue;this.onCue(cue);}}
+  private monitor(){if(this.frame!==undefined||!this.enabled||!this.narrator.ready||this.video.paused||this.video.ended)return;this.frame=requestAnimationFrame(()=>{this.frame=undefined;this.tick();this.monitor();});}
+  private stopMonitor(){if(this.frame!==undefined)cancelAnimationFrame(this.frame);this.frame=undefined;}
+  constructor(private video:HTMLVideoElement,private narrator:LocalNarrator,private getSegments:()=>Segment[],private onChange:(message:string)=>void,private muteControl:HTMLInputElement,private context:()=>{sourceLanguage?:string;englishTerms?:string}=()=>({}),private onCue:(cue:number|undefined)=>void=()=>{}){
+    video.addEventListener('play',()=>{this.tick();this.monitor();});
+    video.addEventListener('pause',()=>{this.stopMonitor();if(this.enabled&&!video.ended)this.narrator.pause();});
     video.addEventListener('ended',()=>{if(!this.enabled)return;if(!this.finished){this.narrator.resume();this.onChange('Concluindo a narração sem cortar o texto…');}else this.onChange('Narração concluída.');});
     video.addEventListener('timeupdate',()=>this.tick());
     video.addEventListener('ratechange',()=>this.adjustRate());
@@ -165,14 +180,14 @@ export class VideoNarration {
     if(this.enabled)this.disable();this.wasMuted=this.video.muted;this.manuallyMuted=false;this.enabled=true;this.start();
   }
   disable(){
-    if(!this.enabled)return;this.enabled=false;this.finished=false;this.first=-1;this.narrator.stop();
+    if(!this.enabled)return;this.enabled=false;this.stopMonitor();this.finished=false;this.first=-1;this.narrator.stop();this.spokenCue=undefined;this.publishCue(true);
     if(!this.manuallyMuted){this.video.muted=this.wasMuted;this.muteControl.checked=this.wasMuted;}
     this.onChange('Narração desativada.');
   }
   private positionAudio(){
     const position=this.narrator.seekVideo(this.getSegments(),this.video.currentTime);if(!position)return false;
     this.startedAt=position.startsAt;this.finished=position.finished;this.adjustRate();
-    this.onChange(position.finished?'Narração concluída.':this.video.paused?'Narração contínua pronta. Dê play para ouvir.':'Narração contínua. O vídeo segue sem pausas automáticas.');this.tick();return true;
+    this.onChange(position.finished?'Narração concluída.':this.video.paused?'Narração contínua pronta. Dê play para ouvir.':'Narração contínua. O vídeo segue sem pausas automáticas.');this.tick();this.publishCue(true);this.monitor();return true;
   }
   private start(){
     const segments=this.getSegments(),context=this.context();this.first=segments.findIndex(s=>s.end>this.video.currentTime);
@@ -181,19 +196,32 @@ export class VideoNarration {
     this.startedAt=Math.max(segments[this.first].start,this.video.currentTime);this.speechStart=segments[begin].start;this.narrator.englishTerms=context.englishTerms||'';
     this.onChange('Preparando a narração contínua. Aguarde ficar pronta para dar play.');
     try{
-      this.narrator.read(segments.slice(begin).map((s,index)=>({id:String(index+begin),text:s.translated,original:s.original,sourceLanguage:context.sourceLanguage||'en'})),()=>{
+      this.narrator.read(segments.slice(begin).map((s,index)=>({id:String(index+begin),text:s.translated,original:s.original,sourceLanguage:context.sourceLanguage||'en'})),id=>{
+        this.spokenCue=Number(id);this.publishCue();
         if(this.enabled)this.onChange(this.video.paused&&!this.video.ended?'Narração contínua pronta. Dê play para ouvir.':'Narração contínua. O vídeo segue sem pausas automáticas.');
       },error=>{
-        if(!this.enabled)return;this.finished=true;
+        if(!this.enabled)return;this.finished=true;this.stopMonitor();this.publishCue(true);
         if(error){this.disable();this.onChange(error);}else this.onChange('Narração concluída.');
-      },this.narrator.rate*this.video.playbackRate,{paused:this.video.paused||this.video.currentTime<this.startedAt,retainAudio:true,onReady:()=>{
+      },this.narrator.rate*this.video.playbackRate,{paused:this.video.paused||this.video.currentTime<this.startedAt,retainAudio:true,alignVideoCues:natural,onReady:()=>{
         if(!this.enabled)return;if(!this.manuallyMuted){this.video.muted=true;this.muteControl.checked=true;}
         if(this.video.ended){this.narrator.resume();this.onChange('Concluindo a narração sem cortar o texto…');return;}
         if(this.positionAudio())return;
-        this.adjustRate();this.onChange(this.video.paused?'Narração contínua pronta. Dê play para ouvir.':'Narração contínua. O vídeo segue sem pausas automáticas.');this.tick();
+        this.adjustRate();this.onChange(this.video.paused?'Narração contínua pronta. Dê play para ouvir.':'Narração contínua. O vídeo segue sem pausas automáticas.');this.tick();this.publishCue(true);this.monitor();
       }});
     }catch(error){this.disable();this.onChange(error instanceof Error?error.message:'Não foi possível narrar.');}
   }
-  private adjustRate(){if(!this.enabled)return;const last=this.getSegments().at(-1);this.narrator.setPlaybackRate(playbackRateForVideo(this.narrator.duration,(last?.end||this.video.duration)-this.speechStart,this.narrator.rate,this.video.playbackRate));}
-  private tick(){if(!this.enabled||this.finished||this.video.paused||this.video.seeking||this.first<0||this.video.currentTime<this.startedAt)return;this.narrator.resume();}
+  private adjustRate(){
+    if(!this.enabled)return;
+    const timing=this.narrator.cueTiming(this.getSegments());
+    if(timing&&!this.video.ended){this.narrator.setPlaybackRate(narrationRate(timing,this.narrator.audioPosition,this.video.currentTime,this.video.playbackRate));return;}
+    const last=this.getSegments().at(-1);this.narrator.setPlaybackRate(playbackRateForVideo(this.narrator.duration,(last?.end||this.video.duration)-this.speechStart,this.narrator.rate,this.video.playbackRate));
+  }
+  private tick(){
+    if(!this.enabled||this.finished)return;
+    this.publishCue();
+    if(this.video.paused||this.video.seeking||this.first<0)return;
+    const timing=this.narrator.cueTiming(this.getSegments());
+    if(this.video.currentTime<(timing?.videoStart??this.startedAt)-.02){this.narrator.pause();return;}
+    this.adjustRate();this.narrator.resume();
+  }
 }

@@ -40,3 +40,15 @@ test('Gemini discovery accepts available text models and rejects injected names 
  assert.equal(new URL(geminiEndpoint(models[0].id)).hostname,'generativelanguage.googleapis.com');
  assert.throws(()=>geminiEndpoint('https://example.com/steal'));assert.match(geminiError(404),/modelo.*disponível/i);
 });
+
+test('Gemini 403 diagnoses structured reasons without leaking keys or provider content',()=>{
+ const reason=value=>({error:{message:'secret-key and private text',details:[{'@type':'type.googleapis.com/google.rpc.ErrorInfo',reason:value,metadata:{key:'secret-key'}}]}});
+ assert.match(geminiError(403),/não significa.*pagar/);
+ assert.match(geminiError(403,reason('API_KEY_HTTP_REFERRER_BLOCKED')),/https:\/\/rmvitor.github.io\/\*/);
+ assert.match(geminiError(403,reason('SERVICE_DISABLED')),/desativada/);
+ assert.match(geminiError(403,reason('API_KEY_SERVICE_BLOCKED')),/restrições/);
+ assert.match(geminiError(403,reason('API_KEY_IP_ADDRESS_BLOCKED')),/IPs/);
+ assert.match(geminiError(403,reason('BILLING_DISABLED')),/faturamento.*inativo/);
+ for(const payload of [reason('UNKNOWN'),reason('API_KEY_HTTP_REFERRER_BLOCKED'),{error:{details:{message:'secret-key'}}}])assert.doesNotMatch(geminiError(403,payload),/secret-key|private text/);
+ assert.match(geminiError(429),/não ativa cobrança/);
+});
