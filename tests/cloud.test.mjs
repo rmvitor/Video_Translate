@@ -52,3 +52,10 @@ test('Gemini 403 diagnoses structured reasons without leaking keys or provider c
  for(const payload of [reason('UNKNOWN'),reason('API_KEY_HTTP_REFERRER_BLOCKED'),{error:{details:{message:'secret-key'}}}])assert.doesNotMatch(geminiError(403,payload),/secret-key|private text/);
  assert.match(geminiError(429),/não ativa cobrança/);
 });
+
+test('temporary Gemini failures explain service availability without exposing provider text',()=>{
+ const error=geminiError(503,{error:{message:'private text and secret key',status:'UNAVAILABLE'}});
+ assert.match(error,/temporariamente.*HTTP 503/);assert.match(error,/outro modelo/);assert.match(error,/Nenhuma alteração/);
+ assert.doesNotMatch(error,/private text|secret key|pagar|chave inválida/);
+ for(const code of [502,504])assert.match(geminiError(code),/temporária.*HTTP/);
+});

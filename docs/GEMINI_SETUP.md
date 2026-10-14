@@ -21,9 +21,13 @@ Alguns modelos/projetos elegíveis oferecem cota gratuita; disponibilidade, limi
 | 403 sem motivo conhecido | Revisar projeto, permissões, restrições e disponibilidade do modelo no AI Studio/Google Cloud. Não atribuir automaticamente a cobrança. |
 | 404 | Verificar modelos nas Preferências e escolher um disponível. No modo automático, o app pode consultar o catálogo e repetir com outro modelo de texto. |
 | 429 | Cota esgotada ou limite de requisições. Conferir os limites do modelo e aguardar; não há repetição automática para esse erro. |
+| 503 | Serviço temporariamente indisponível ou sobrecarregado. Aguardar e usar **Tentar novamente**, ou escolher outro modelo disponível no próprio diálogo. Consultar a lista de modelos pode funcionar mesmo quando a geração está indisponível. Não indica, por si só, falta de pagamento. |
+| 502/504 | Falha temporária de comunicação. Aguardar e repetir manualmente. |
 | 400/401 | Conferir a chave e a solicitação no AI Studio. |
 
 O app interpreta códigos estruturados do Google, sem reproduzir mensagens arbitrárias que possam conter chave ou texto confidencial. Erros não substituem a tradução salva. Manter a referência de origem nas chamadas da API resolve a incompatibilidade do app com chaves restritas por site; não concede uma permissão ausente no projeto do Google.
+
+Em falhas temporárias, a seleção de textos, a chave e o consentimento permanecem no diálogo. O modelo em uso é mostrado antes de enviar. O aplicativo não repete chamadas nem troca de modelo automaticamente em resposta a HTTP 503; cada nova tentativa exige um clique do usuário. A escolha de outro modelo usa a lista consultada com a mesma chave e é compartilhada com as Preferências. Verifique a cota e os custos do modelo no seu projeto.
 
 ## Conteúdo empresarial
 

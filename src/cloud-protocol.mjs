@@ -31,6 +31,8 @@ export function geminiError(status, payload = {}) {
     return 'Acesso recusado pelo Gemini (HTTP 403). Confira as restrições da chave, a ativação da Generative Language API e a permissão do modelo no projeto. Este código, sozinho, não significa que é necessário pagar.';
   }
   if (status === 404) return 'Este modelo Gemini não está disponível para sua chave. Clique em Verificar chave e modelos nas Preferências e escolha um modelo disponível.';
+  if (status === 503) return 'O Gemini está temporariamente indisponível ou sobrecarregado (HTTP 503). Aguarde alguns instantes e tente novamente, ou escolha outro modelo disponível. Nenhuma alteração foi aplicada.';
+  if (status === 502 || status === 504) return `Falha temporária de comunicação com o Gemini (HTTP ${status}). Aguarde alguns instantes e tente novamente. Nenhuma alteração foi aplicada.`;
   if (status === 429) return 'Cota ou limite de requisições do Gemini atingido (HTTP 429). Confira a cota do modelo e tente depois; o aplicativo não ativa cobrança automaticamente.';
   if (status === 400 || status === 401) return 'O Gemini não aceitou a chave ou a solicitação. Confira a chave no Google AI Studio.';
   return `O Gemini não conseguiu atender à solicitação (HTTP ${status}). Tente novamente mais tarde.`;

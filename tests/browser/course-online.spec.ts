@@ -149,6 +149,31 @@ test('Gemini 403 identifies a restricted website and sends only the public origi
  await expect(page.locator('#gemini-model-status')).toContainText('HTTP 403');expect(sent).toHaveLength(2);expect(sent[1].method).toBe('GET');expect(sent[1].headers.referer).toBe('http://127.0.0.1:4173/');expect(sent[1].body).toBe(null);
 });
 
+test('Gemini 503 keeps the selection, retries only on user action and allows an explicit alternate model',async({page,context})=>{
+ const posts:any[]=[];let queries=0;
+ await context.route(endpoint,route=>{
+   const request=route.request();
+   if(request.method()==='GET'){
+     queries++;return route.fulfill({contentType:'application/json',body:JSON.stringify({models:['gemini-2.5-flash','gemini-2.5-flash-lite'].map(id=>({name:'models/'+id,supportedGenerationMethods:['generateContent']}))})});
+   }
+   posts.push({url:request.url(),body:request.postDataJSON()});
+   if(!request.url().includes('gemini-2.5-flash-lite:'))return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{status:'UNAVAILABLE',message:'Do not echo private text or dummy-test-key-never-real'}})});
+   return route.fulfill({contentType:'application/json',body:JSON.stringify({candidates:[{content:{parts:[{text:JSON.stringify({translations:[{id:'0',translated:'Boas-vindas ao projeto.'}]})}]}}]})});
+ });
+ await seed(page);await page.getByRole('button',{name:'Preferências',exact:true}).click();await page.locator('#theme-choice').selectOption('dark');await page.locator('#settings-gemini-key').fill(dummyKey);await page.locator('#check-gemini-models').click();
+ await expect(page.locator('#gemini-model-status')).toContainText('2 modelos');await course(page);await page.locator('#pdf-task').selectOption('gemini');await page.locator('#online-pdf').click();
+ await expect(page.locator('#online-model-status')).toContainText('gemini-2.5-flash');await page.locator('[data-online-unit="1"]').uncheck();await page.locator('#online-consent').check();await page.locator('#send-online').click();
+ await expect(page.locator('#online-error')).toContainText('HTTP 503');await expect(page.locator('#online-error')).not.toContainText(dummyKey);await expect(page.locator('#send-online')).toHaveText('Tentar novamente');
+ await expect(page.locator('#review-gemini-model')).toBeEnabled();await expect(page.locator('#review-gemini-key')).toHaveValue(dummyKey);await expect(page.locator('[data-online-unit="1"]')).not.toBeChecked();await expect(page.locator('#online-consent')).toBeChecked();
+ await page.waitForTimeout(350);expect(posts).toHaveLength(1);expect(queries).toBe(1);await expect(page.locator('#apply-online')).toHaveCount(0);
+ await page.locator('#send-online').click();await expect(page.locator('#send-online')).toHaveText('Tentar novamente');expect(posts).toHaveLength(2);expect(posts[0]).toEqual(posts[1]);
+ await page.setViewportSize({width:390,height:844});await page.locator('#send-online').scrollIntoViewIfNeeded();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'/tmp/entrelinhas-gemini-503-mobile.png'});
+ await page.locator('#review-gemini-model').selectOption('gemini-2.5-flash-lite');await expect(page.locator('#online-model-status')).toContainText('gemini-2.5-flash-lite');await page.locator('#send-online').click();await expect(page.locator('#apply-online')).toBeVisible();
+ expect(posts).toHaveLength(3);expect(posts[2].url).toContain('gemini-2.5-flash-lite:generateContent');expect(posts[2].body).toEqual(posts[0].body);expect(JSON.parse(posts[2].body.contents[0].parts[0].text).units).toEqual([{id:'0',text:'Welcome to the project.'}]);
+ await expect(page.locator('#review-gemini-model')).toBeDisabled();
+ expect((await readDB(page,'documents','pdf')).pages[0].blocks[0].translated).toBe('');await page.locator('#apply-online').click();expect((await readDB(page,'documents','pdf')).pages[0].blocks[0].translated).toBe('Boas-vindas ao projeto.');
+});
+
 test('library tabs separate PDF/video and share local readers with projects without duplicate players',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await seed(page);

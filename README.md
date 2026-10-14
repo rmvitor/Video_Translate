@@ -214,3 +214,7 @@ Vídeos e páginas usam o mesmo painel: idioma, escolha da ação, explicação 
 - Vincular novamente o arquivo local preserva a tela escolhida durante o carregamento, sem fechar a biblioteca ou interromper a narração iniciada pelo usuário.
 - O Gemini informa causas de HTTP 403 quando o provedor fornece o motivo. Chamadas enviam apenas a origem pública como referência para permitir chaves restritas por site, sem expor URLs de recuperação. Veja [configuração, cota gratuita e diagnóstico](docs/GEMINI_SETUP.md).
 - Foi realizada uma [avaliação da tradução local para cursos empresariais](docs/QUALITY_REVIEW.md), com 12 frases sintéticas e resultados reais. Ela encontrou alteração de números, perda de condições e termos inadequados. A tradução atual deve ser tratada como rascunho sujeito a revisão. O documento prioriza glossário, aprovação, avaliação representativa, OCR local e alinhamento por palavra.
+
+### Recuperação de falhas do Gemini na versão 0.8.3
+
+HTTP 503 indica indisponibilidade temporária da geração, mesmo que a consulta da chave e dos modelos tenha funcionado. O diálogo agora mostra o modelo em uso, permite escolher um modelo da lista já consultada e oferece **Tentar novamente** após HTTP 502/503/504. Os textos selecionados, a chave e a autorização permanecem no diálogo; cada novo envio depende de um clique, sem repetição ou troca automática de modelo para esses erros. Nada é salvo antes de revisar e aplicar a resposta.

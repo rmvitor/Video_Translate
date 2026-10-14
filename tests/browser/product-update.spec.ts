@@ -91,5 +91,5 @@ test('Gemini recovers from unavailable model with discovered text models and sen
  });
  await seed(page);await page.locator('#pdf-task').selectOption('gemini');await page.locator('#online-pdf').click();await page.locator('#review-gemini-key').fill('fictional-key-for-tests');await page.locator('#online-consent').check();await page.locator('#send-online').click();await expect(page.locator('#apply-online')).toBeVisible();
  expect(requests.map(request=>request.method)).toEqual(['POST','GET','POST']);expect(requests[2].url).toContain('gemini-3-flash-preview:generateContent');expect(requests[0].body).toEqual(requests[2].body);expect(JSON.stringify(requests)).not.toContain('private.mp4');
- await page.locator('#apply-online').click();await expect(page.locator('.pdf-copy').first()).toHaveText('Tradução pelo modelo disponível.');
+ await expect(page.locator('#online-model-status')).toContainText('gemini-3-flash-preview');await expect(page.locator('#review-gemini-model option:checked')).toContainText('gemini-3-flash-preview');await page.locator('#apply-online').click();await expect(page.locator('.pdf-copy').first()).toHaveText('Tradução pelo modelo disponível.');
 });
