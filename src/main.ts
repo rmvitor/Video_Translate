@@ -3,6 +3,7 @@ import './learning.css';
 import './course.css';
 import './access.css';
 import './theme.css';
+import './material-tools.css';
 import { createAccess } from './access';
 import { createAdmin } from './admin';
 import { createBackupArea } from './backup';
@@ -66,7 +67,7 @@ $('#app').innerHTML = `
     <div class="sidebar-bottom">
       <div class="local-card"><span class="local-icon">${icon('hard-drive')}</span><strong>Seu dispositivo. Seu conteúdo.</strong><p>Os vídeos ficam com você.<br>Tradução local ou de texto online.</p><span class="local-indicator"><span></span> Processamento local</span></div>
       <button class="install-button" id="install">${icon('monitor-smartphone')}<span>Instalar aplicativo</span>${icon('arrow-up-right')}</button>
-      <div class="sidebar-footer">Feito para compreender, sem barreiras.<span>v0.8 · PWA</span></div>
+      <div class="sidebar-footer">Feito para compreender, sem barreiras.<span>v0.8.1 · PWA</span></div>
     </div>
   </aside>
   <div class="app-content">
@@ -85,8 +86,17 @@ $('#app').innerHTML = `
             </div>
             <div class="player-info"><div><strong id="file-title">Seu próximo treinamento</strong><span id="file-detail">Adicione um vídeo para começar</span></div><span class="language-route">EN ${icon('arrow-up-right')} PT-BR</span></div>
             <div class="player-toolbar"><label class="checkbox-label"><input type="checkbox" id="remember" /><span>Guardar vídeo neste dispositivo</span><button class="icon-button" data-action="storage-help" aria-label="Como funciona o armazenamento local">${icon('circle-help')}</button></label><label class="caption-select">${icon('captions')}<select id="caption-language" aria-label="Idioma das legendas"><option value="translated">Português</option><option value="original">Original</option><option value="both">Os dois idiomas</option><option value="off">Sem legenda</option></select></label></div>
-            <div class="narration-panel"><div class="narration-toggles"><label><input type="checkbox" id="video-narration" />${icon('volume-2')}<span id="video-narration-label">Narrar em PT-BR</span></label><label><input type="checkbox" id="mute-original" />Silenciar áudio original</label></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local do vídeo"></select></label><label>Velocidade<select data-voice-rate aria-label="Velocidade da narração do vídeo"><option value="0.8">0,8×</option><option value="1">1×</option><option value="1.2">1,2×</option><option value="1.5">1,5×</option></select></label></div><p id="narration-status" aria-live="polite">Narração contínua em PT-BR. Prepare as vozes antes do primeiro uso; o vídeo segue sem pausas automáticas.</p></div>
-            <div class="source-settings"><label>Precisão da transcrição<select id="transcription-quality"><option value="base">Reforçada (padrão)</option><option value="small">Maior precisão · mais tempo e memória</option></select></label><label>Idioma original<select id="video-source-language">${LANGUAGES.map(([code, label]) => `<option value="${code}">${label}</option>`).join('')}</select></label><p>Para outros idiomas, os modelos locais são maiores. Se preferir Gemini, transcreva localmente e envie somente o texto.</p><div class="inline-actions"><button class="button secondary" id="transcribe-only">Só transcrever localmente</button><button class="button secondary" id="retranscribe-video">Refazer transcrição do áudio</button><button class="button secondary" id="online-video">Traduzir texto com Gemini</button><button class="text-button" id="analyze-video">Analisar texto com Gemini</button></div><details id="video-analysis" hidden><summary>Análise em PT-BR</summary><p class="analysis-copy"></p></details></div><div class="process-area"><div class="process-copy"><span class="sparkle-icon">${icon('sparkles')}</span><div><strong id="process-title">Traduza sem sair daqui</strong><p id="process-description">A IA roda no navegador. Nenhuma chave de API necessária.</p></div></div><button class="button primary" id="process" disabled>${icon('languages')}Transcrever e traduzir</button></div>
+            <div class="narration-panel material-playback"><h3>Narração</h3><div class="narration-toggles"><label><input type="checkbox" id="video-narration" />${icon('volume-2')}<span id="video-narration-label">Narrar em PT-BR</span></label><label><input type="checkbox" id="mute-original" />Silenciar áudio original</label></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local do vídeo"></select></label><label>Velocidade<select data-voice-rate aria-label="Velocidade da narração do vídeo"><option value="0.8">0,8×</option><option value="1">1×</option><option value="1.2">1,2×</option><option value="1.5">1,5×</option></select></label></div><p id="narration-status" aria-live="polite">Narração contínua em PT-BR. Prepare as vozes antes do primeiro uso; o vídeo segue sem pausas automáticas.</p></div>
+            <section class="material-tools process-area" id="video-tools" aria-label="Transcrição e tradução do vídeo">
+              <div class="tools-heading"><h3 id="process-title">Transcrição e tradução</h3><span id="video-text-state" class="tools-status">Sem transcrição</span></div>
+              <div class="source-settings tools-fields"><label>Idioma original<select id="video-source-language">${LANGUAGES.map(([code, label]) => `<option value="${code}">${label}</option>`).join('')}</select></label><label id="transcription-quality-field">Precisão da transcrição<select id="transcription-quality" aria-describedby="transcription-quality-help"><option value="small">Alto padrão — Whisper Small.en</option><option value="base" selected>Médio — Whisper Base.en</option></select></label></div>
+              <p id="transcription-quality-help" class="tools-help">Alto padrão: mais precisão, tempo e memória. Médio: mais leve para o dia a dia.</p>
+              <label class="action-choice" for="video-task">O que você quer fazer?<select id="video-task" aria-describedby="process-description"><option value="local">Transcrever e traduzir · local</option><option value="transcribe">Transcrever · texto original</option><option value="gemini">Traduzir com Gemini · online</option></select></label>
+              <p id="process-description" class="action-description" aria-live="polite">Gera o texto do áudio e a tradução em PT-BR neste dispositivo. Use para preparar um vídeo novo.</p>
+              <div class="primary-action"><button class="button primary" id="process" disabled>${icon('languages')}Transcrever e traduzir</button><button class="button primary" id="transcribe-only" hidden disabled>${icon('file-text')}Transcrever áudio</button><button class="button primary" id="online-video" hidden disabled>${icon('languages')}Traduzir com Gemini</button></div>
+              <details class="material-more" id="video-more"><summary>Mais opções</summary><p>Use a análise para criar um resumo e destacar pontos do texto já transcrito.</p><button class="button secondary" id="analyze-video">Analisar texto com Gemini</button></details>
+              <details id="video-analysis" class="analysis-panel" hidden><summary>Análise em PT-BR</summary><p class="analysis-copy"></p></details>
+            </section>
             <div class="progress-area" id="progress-area" hidden aria-live="polite"><div class="progress-top"><span>${icon('loader-circle', 'spin')}<strong id="progress-message">Preparando…</strong></span><button class="text-button" id="cancel">Cancelar</button></div><div class="progress-track"><div id="progress-bar"></div></div><p>O processamento é local. Mantenha esta tela aberta; o primeiro uso baixa os modelos de IA.</p></div>
             <div class="error-panel" id="error-panel" hidden role="alert"><strong>Não foi possível concluir</strong><p id="error-message"></p><details><summary>Detalhes técnicos</summary><pre id="error-detail"></pre></details></div>
           </section>
@@ -251,8 +261,7 @@ function updateProjectUI() {
   $<HTMLSelectElement>('#video-source-language').value = project?.sourceLanguage || 'en';
   $<HTMLSelectElement>('#video-source-language').disabled = !project || processing || Boolean(learning?.busy);
   for (const id of ['online-video', 'analyze-video']) $<HTMLButtonElement>(`#${id}`).disabled = !project?.segments.length || processing;
-  $<HTMLButtonElement>('#transcribe-only').disabled = !project || processing || (!currentFile && !project.segments.length);
-  $<HTMLButtonElement>('#retranscribe-video').disabled=!project||processing||!currentFile;
+  $<HTMLButtonElement>('#transcribe-only').disabled=!project||processing||!currentFile;
   $<HTMLSelectElement>('#transcription-quality').disabled=processing;
   $('#video-analysis').hidden = !project?.analysis;
   $('#video-analysis .analysis-copy').textContent = project?.analysis || '';
@@ -263,17 +272,34 @@ function updateProjectUI() {
   $<HTMLInputElement>('#remember').checked = Boolean(project?.video);
   $<HTMLInputElement>('#remember').disabled = processing || !project || !currentFile || !storageAvailable;
   $<HTMLButtonElement>('#process').disabled = processing || !project || (!currentFile && !project.segments.length);
-  $('#process').innerHTML = `${icon('languages')}${project?.segments.length ? 'Traduzir novamente' : 'Transcrever e traduzir'}`;
-  $('#process-title').textContent = project?.segments.length ? 'Seu treinamento, no seu idioma' : 'Traduza sem sair daqui';
-  $('#process-description').textContent = project?.segments.length ? 'Clique em um trecho para voltar ao momento no vídeo.' : 'A IA roda no navegador. Nenhuma chave de API necessária.';
+  $('#process').innerHTML = `${icon('languages')}${project?.segments.length ? 'Traduzir transcrição em PT-BR' : 'Transcrever e traduzir'}`;
   $<HTMLButtonElement>('#export').disabled = !project?.segments.length;
   $<HTMLInputElement>('#search').disabled = !project?.segments.length;
-  $('#process').hidden = processing;
+  updateVideoActions();
   $('#progress-area').hidden = !processing;
   $('#import-captions').toggleAttribute('disabled', processing);
   icons();
   learning?.renderVideoOrganization();
   $<HTMLInputElement>('#video-narration').disabled = processing || !project?.segments.some(s => s.translated.trim() || s.original.trim());
+}
+
+function updateVideoActions(){
+  const task=$<HTMLSelectElement>('#video-task').value,hasText=Boolean(project?.segments.length);
+  $<HTMLSelectElement>('#video-task').disabled=processing;
+  const descriptions={
+    local:hasText?'Traduz a transcrição atual em PT-BR neste dispositivo. Para reconhecer o áudio de novo, escolha Transcrever.':'Gera o texto do áudio e a tradução em PT-BR neste dispositivo. Use para preparar um vídeo novo.',
+    transcribe:hasText?'Reconhece o áudio novamente e substitui o texto salvo. Use para corrigir palavras ausentes ou testar outra precisão; traduza depois.':'Gera somente o texto no idioma original. Use para revisar a transcrição antes de traduzir, ou para preparar o texto para o Gemini.',
+    gemini:hasText?'Traduz ou revisa a transcrição com Gemini. Você escolhe os trechos, informa sua chave e autoriza o envio apenas do texto.':'Primeiro use Transcrever para gerar o texto. Depois escolha Gemini para uma tradução online; o vídeo e o áudio continuam locais.',
+  };
+  $('#process-description').textContent=descriptions[task as keyof typeof descriptions]+(task==='transcribe'&&project&&!currentFile?' Selecione o vídeo original para continuar.':'');
+  for(const [mode,id] of [['local','process'],['transcribe','transcribe-only'],['gemini','online-video']])$(`#${id}`).hidden=processing||mode!==task;
+  $('#transcribe-only').innerHTML=`${icon('file-text')}${hasText?'Refazer transcrição do áudio':'Transcrever áudio'}`;
+  $('#video-text-state').textContent=hasText?'Transcrição disponível':'Sem transcrição';
+  const quality=$<HTMLSelectElement>('#transcription-quality'),suffix=(project?.sourceLanguage||'en')==='en'?'.en':'';
+  for(const option of quality.options){const name=option.value==='small'?`Alto padrão — Whisper Small${suffix}`:`Médio — Whisper Base${suffix}`;if(option.text!==name)option.text=name;}
+  const needsRecognition=task==='transcribe'||(task==='local'&&!hasText);
+  $('#transcription-quality-field').hidden=!needsRecognition;$('#transcription-quality-help').hidden=!needsRecognition;
+  icons();
 }
 
 function renderTranscript() {
@@ -541,8 +567,12 @@ window.addEventListener('dragover', event => event.preventDefault());
 window.addEventListener('drop', event => event.preventDefault());
 
 $('#process').addEventListener('click', () => startProcessing());
-$('#transcribe-only').addEventListener('click', () => startProcessing(true));
-$('#retranscribe-video').addEventListener('click',()=>{if(!project?.segments.length){startProcessing(true,true);return;}dialog(`<h2>Refazer a transcrição?</h2><p>O áudio será transcrito novamente neste dispositivo. A transcrição e as traduções atuais serão substituídas quando a nova transcrição estiver pronta.</p><button class="button primary" id="confirm-retranscription">Refazer transcrição</button>`);$('#confirm-retranscription').addEventListener('click',()=>{$<HTMLDialogElement>('#dialog').close();startProcessing(true,true);});});
+$('#video-task').addEventListener('change',updateVideoActions);
+$('#transcribe-only').addEventListener('click',()=>{
+  if(!project?.segments.length){startProcessing(true,true);return;}
+  dialog(`<h2>Refazer a transcrição?</h2><p>O áudio será reconhecido novamente com o modelo escolhido. A transcrição e as traduções atuais serão substituídas quando o novo texto estiver pronto.</p><button class="button primary" id="confirm-retranscription">Refazer transcrição</button>`);
+  $('#confirm-retranscription').addEventListener('click',()=>{$<HTMLDialogElement>('#dialog').close();startProcessing(true,true);});
+});
 $('#video-source-language').addEventListener('change', async () => { if (!project || processing || online.busy || learning.busy) return; project.sourceLanguage = $<HTMLSelectElement>('#video-source-language').value; await persist(); updateProjectUI(); });
 const videoTexts = () => project?.segments.map((s, i) => ({ id: String(i), original: s.original })) ?? [];
 $('#online-video').addEventListener('click', () => { const target = project; if (!target) return; online.translate(videoTexts(), async values => { videoNarration.disable(); narrator.stop(); for (const value of values) target.segments[Number(value.id)].translated = value.translated; await saveProject(target); await refreshLibrary(); if (project?.id === target.id) { updateProjectUI(); renderTranscript(); updateCaptions(); } await learning.refresh(); if (currentView === 'workspace' && project?.id === target.id) await learning.showVideoResult(target.id); }); });

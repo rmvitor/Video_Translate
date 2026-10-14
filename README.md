@@ -198,3 +198,12 @@ Teste opcional da voz real, com o servidor de testes em execução: `npm run tes
 - PT-BR é o idioma padrão da narração. A voz natural mantém o áudio preparado na memória e reposiciona a leitura ao avançar/voltar no vídeo, inclusive depois do fim. Vozes do sistema retomam a partir do trecho correspondente.
 - Transcrição local reforçada com Whisper Base; Whisper Small é opcional para maior precisão, com mais tempo e memória. Mais contexto na sobreposição e preservação do texto quando os tempos estão ausentes/inválidos. Tempos recuperados a partir do texto são aproximados; reconhecimento ainda pode precisar de revisão.
 - Para materiais anteriores, use **Refazer transcrição do áudio**. A tradução isolada reutiliza o texto existente. Confira o idioma original; mantenha o vídeo local selecionado.
+
+### Organização da versão 0.8.1
+
+Vídeos e páginas usam o mesmo painel: idioma, escolha da ação, explicação e um botão principal. Organização e voz ficam em um grupo separado; a análise com Gemini fica em **Mais opções**.
+
+- **Transcrever:** gera apenas o texto original, para revisar antes de traduzir. Quando já há texto, permite refazer o reconhecimento com o vídeo local selecionado, após confirmar a substituição.
+- **Transcrever e traduzir:** gera texto e PT-BR localmente em vídeos novos; quando a transcrição existe, traduz o texto atual.
+- **Traduzir com Gemini:** usa somente o texto já disponível, selecionado e autorizado. Vídeo, áudio, PDF e imagens permanecem locais.
+- **Alto padrão — Whisper Small** e **Médio — Whisper Base** identificam os modelos de reconhecimento; `.en` aparece para áudio em inglês. Médio continua sendo a escolha inicial; Alto padrão exige mais memória e tempo. O seletor aparece quando a ação reconhece áudio.

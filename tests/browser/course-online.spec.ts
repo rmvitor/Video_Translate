@@ -93,7 +93,7 @@ test('Gemini sends only selected text after consent and persists only reviewed t
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(reply) }] } }] }) });
   });
   await seed(page); await course(page);
-  await page.locator('#online-pdf').click();
+  await page.locator('#pdf-task').selectOption('gemini');await page.locator('#online-pdf').click();
   await page.locator('#review-gemini-key').fill(dummyKey);
   await page.locator('[data-online-unit="1"]').uncheck();
   await page.locator('#send-online').click();
@@ -111,7 +111,7 @@ test('Gemini sends only selected text after consent and persists only reviewed t
   await page.locator('#apply-online').click();
   await expect(page.locator('.pdf-copy').first()).toHaveText('Boas-vindas ao projeto.');
   expect((await readDB(page, 'documents', 'pdf')).pages[0].blocks[1].translated).toBe('');
-  await page.locator('#analyze-pdf').click();
+  await page.locator('#pdf-more > summary').click();await page.locator('#analyze-pdf').click();
   await expect(page.locator('#review-gemini-key')).toHaveValue(dummyKey);
   await page.locator('#online-consent').check(); await page.locator('#send-online').click();
   await expect(page.locator('#analysis-proposal')).toContainText('Acompanhe a preparação');
@@ -119,14 +119,14 @@ test('Gemini sends only selected text after consent and persists only reviewed t
   await expect(page.locator('#pdf-reader .analysis-copy')).toContainText('Qual é a data');
   expect(JSON.stringify(await readDB(page, 'documents', 'pdf'))).not.toContain(dummyKey);
   expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain(dummyKey);
-  await page.reload(); await course(page); await page.locator('#online-pdf').click();
+  await page.reload(); await course(page); await page.locator('#pdf-task').selectOption('gemini');await page.locator('#online-pdf').click();
   await expect(page.locator('#review-gemini-key')).toHaveValue('');
 });
 
 test('malformed Gemini response and quota errors do not overwrite translations', async ({ page, context }) => {
   let quota = false;
   await context.route(endpoint, route => route.fulfill(quota ? { status: 429, body: 'quota' } : { contentType: 'application/json', body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ translations: [{ id: '999', translated: '<script>bad</script>' }, { id: '0', translated: 'unexpected' }] }) }] } }] }) }));
-  await seed(page); await course(page); await page.locator('#online-pdf').click();
+  await seed(page); await course(page); await page.locator('#pdf-task').selectOption('gemini');await page.locator('#online-pdf').click();
   await page.locator('#review-gemini-key').fill(dummyKey); await page.locator('#online-consent').check(); await page.locator('#send-online').click();
   await expect(page.locator('#online-error')).toContainText('inválida');
   await expect(page.locator('#apply-online')).toHaveCount(0);

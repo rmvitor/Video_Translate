@@ -1,0 +1,50 @@
+/* Shared placement and sizing for video and page tools in every viewer. */
+.material-tools{display:block;padding:18px 20px;background:var(--surface-soft);border:1px solid var(--border);border-radius:10px;margin:12px 0;color:var(--text)}
+.player-card>.material-tools{border-left:0;border-right:0;border-radius:0;margin:0}
+.tools-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.tools-heading h3,.material-playback h3{font-size:13px;font-weight:650;color:var(--text);margin:0}
+.tools-status{font-size:11px;color:var(--secondary-text);text-align:right}
+.tools-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.material-tools .source-settings{padding:0;border:0;background:none}
+.material-tools label{display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--secondary-text);min-width:0}
+.material-tools select{width:100%;max-width:100%;min-width:0;min-height:40px;padding:9px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);font:inherit;font-size:12px}
+.material-tools>.action-choice{margin-top:16px}
+.tools-help,.action-description,.material-more p{font-size:12px;line-height:1.65;color:var(--secondary-text);margin:10px 0}
+.primary-action{display:flex;margin-top:14px}
+.primary-action .button{width:100%;min-height:42px;font-size:12px;padding:11px 14px;white-space:normal;text-align:center}
+.material-more{border-top:1px solid var(--border);margin-top:16px;padding-top:12px}
+.material-more summary,.analysis-panel summary{cursor:pointer;font-size:12px;color:var(--secondary-text)}
+.material-more .button{min-height:38px;font-size:12px;white-space:normal}
+.material-tools .analysis-panel{margin-top:14px}
+.material-playback{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;background:var(--surface);border-top:1px solid var(--border)}
+.material-playback>h3{flex-basis:100%}
+.material-playback .narration-toggles{margin:0;gap:14px}
+.material-playback .narration-toggles label{font-size:12px;min-height:36px}
+.material-playback>p{flex-basis:100%;margin:0;font-size:11px}
+.playback-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.playback-actions .button{min-height:40px;font-size:12px}
+.playback-actions .icon-button{width:40px;height:40px}
+#pdf-reader>.reader-controls{margin:12px 0;border:1px solid var(--border);border-radius:10px}
+.material-settings{margin:12px 16px}
+#pdf-reader>.material-settings{margin:12px 0}
+.material-settings>summary{font-size:12px;padding:12px 14px}
+.reader-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.reader-heading>.inline-actions{justify-content:flex-end;gap:8px}
+.result-links{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;padding:10px 20px}
+.result-links .text-button{min-height:32px;font-size:12px}
+#pdf-reader>.result-links{padding:0;margin:10px 0}
+.library-tabs button,.project-tabs .text-button{min-height:40px}
+.nav-item{min-height:44px}
+@media(max-width:700px){
+  .material-tools,.material-playback{padding:16px}
+  .tools-fields{grid-template-columns:minmax(0,1fr)}
+  .tools-heading{align-items:flex-start}
+  .tools-status{max-width:45%;font-size:10px}
+  .material-tools select{font-size:12px}
+  .material-settings{margin:12px}
+  .reader-heading>.inline-actions{justify-content:flex-start;width:100%}
+  .reader-heading .button{white-space:normal}
+  .result-links{padding:10px 16px}
+}
+#library-outlet #workspace-view>.page-heading,#library-outlet .workflow-strip,#library-outlet .feature-grid,#library-outlet .model-note,#library-outlet #back-documents{display:none}
+.tools-fields:has(>[hidden]){grid-template-columns:minmax(0,1fr)}

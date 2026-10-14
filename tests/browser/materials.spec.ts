@@ -188,7 +188,7 @@ test('creation opens PDF and session video translations in their library tabs wi
   await expect(page.locator('#library-pages-panel')).toBeVisible();
   await page.getByRole('button',{name:'Selecionar PDF',exact:true}).click();await page.locator('#pdf-input').setInputFiles(pdfPath);
   await expect(page.locator('#documents-view #pdf-reader')).toBeVisible();
-  await page.locator('#online-pdf').click();await page.locator('#review-gemini-key').fill('fictional-test-key');await page.locator('#online-consent').check();await page.locator('#send-online').click();await expect(page.locator('#apply-online')).toBeVisible();await page.locator('#apply-online').click();
+  await page.locator('#pdf-task').selectOption('gemini');await page.locator('#online-pdf').click();await page.locator('#review-gemini-key').fill('fictional-test-key');await page.locator('#online-consent').check();await page.locator('#send-online').click();await expect(page.locator('#apply-online')).toBeVisible();await page.locator('#apply-online').click();
   await expect(page.locator('#library-outlet #pdf-reader')).toBeVisible();
   expect(sent).toHaveLength(1);expect(JSON.stringify(sent)).not.toMatch(/inlineData|fileData|Training\.pdf|training\.mp4/);
   await page.getByRole('button',{name:'Páginas PDF',exact:true}).click();await page.locator('#view-pdf-library').click();
@@ -308,9 +308,26 @@ test('retranscription uses the selected stronger model and replaces saved words 
     };
   });
   await page.goto('./');await page.locator('#project-input').setInputFiles({name:'old.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({version:1,title:'Texto antigo',filename:'training.mp4',duration:4,segments:[{start:0,end:3.9,original:'Welcome.',translated:'Boas-vindas.'}]}))});
-  await page.locator('#reattach-button').click();await page.locator('#video-input').setInputFiles(videoPath);await page.locator('#video-settings > summary').click();await expect(page.locator('#transcription-quality')).toHaveValue('base');await page.locator('#transcription-quality').selectOption('small');
-  await page.locator('#retranscribe-video').click();await page.locator('#confirm-retranscription').click();await expect(page.locator('#error-panel')).toBeVisible();await expect(page.locator('.translation').first()).toHaveText('Boas-vindas.');
-  await page.locator('#transcription-quality').selectOption('base');await page.locator('#retranscribe-video').click();await page.locator('#confirm-retranscription').click();await expect(page.locator('#library-outlet #workspace-view')).toBeVisible();
+  await page.locator('#reattach-button').click();await page.locator('#video-input').setInputFiles(videoPath);await page.locator('#video-task').selectOption('transcribe');await expect(page.locator('#transcription-quality')).toHaveValue('base');await page.locator('#transcription-quality').selectOption('small');
+  await page.locator('#transcribe-only').click();await page.locator('#confirm-retranscription').click();await expect(page.locator('#error-panel')).toBeVisible();await expect(page.locator('.translation').first()).toHaveText('Boas-vindas.');
+  await page.locator('#transcription-quality').selectOption('base');await page.locator('#transcribe-only').click();await page.locator('#confirm-retranscription').click();await expect(page.locator('#library-outlet #workspace-view')).toBeVisible();
   await page.locator('[data-language=original]').click();await expect(page.locator('.original').first()).toHaveText('Welcome to the complete training with every word.');
   expect(await page.evaluate(()=>(window as any).__transcriptions)).toEqual([{quality:'small',segments:undefined,file:true},{quality:'base',segments:undefined,file:true}]);
+});
+
+test('material tools show one primary action, explain prerequisites and align on desktop and mobile',async({page,context})=>{
+  const outbound:string[]=[];context.on('request',request=>{if(request.method()!=='GET'&&!/\/auth\/v1\/|\/functions\/v1\//.test(request.url()))outbound.push(request.url());});
+  await page.goto('./');await page.locator('#video-task').selectOption('gemini');await expect(page.locator('#online-video')).toBeDisabled();await expect(page.locator('#process-description')).toContainText('Primeiro use Transcrever');
+  await page.locator('#video-input').setInputFiles(videoPath);await page.locator('#video-task').selectOption('local');
+  await expect(page.locator('#video-tools .primary-action .button').filter({visible:true})).toHaveCount(1);await expect(page.locator('#process')).toBeEnabled();await expect(page.locator('#process-description')).toContainText('vídeo novo');
+  await expect(page.locator('#transcription-quality option[value=small]')).toHaveText('Alto padrão — Whisper Small.en');await expect(page.locator('#transcription-quality option[value=base]')).toHaveText('Médio — Whisper Base.en');
+  await page.locator('#video-task').selectOption('transcribe');await expect(page.locator('#transcribe-only')).toBeEnabled();await expect(page.locator('#process')).not.toBeVisible();await expect(page.locator('#process-description')).toContainText('antes de traduzir');
+  await page.locator('#video-source-language').selectOption('es');await expect(page.locator('#transcription-quality option[value=small]')).toHaveText('Alto padrão — Whisper Small');
+  await page.locator('#video-task').selectOption('gemini');await expect(page.locator('#transcription-quality')).not.toBeVisible();await expect(page.locator('#analyze-video')).not.toBeVisible();
+  await page.locator('#project-input').setInputFiles({name:'tool-layout.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({version:1,title:'Acompanhamento',segments:[{start:0,end:2,original:'Welcome to training.',translated:'Boas-vindas ao treinamento.'}]}))});
+  await expect(page.locator('#online-video')).toBeEnabled();await page.locator('#online-video').click();await expect(page.locator('#online-consent')).not.toBeChecked();await page.locator('[data-action=close-dialog]').click();
+  await page.locator('#video-task').selectOption('local');await expect(page.locator('#process')).toHaveText('Traduzir transcrição em PT-BR');await expect(page.locator('#process-description')).toContainText('transcrição atual');await expect(page.locator('#transcription-quality')).not.toBeVisible();
+  await page.setViewportSize({width:1366,height:1000});await page.screenshot({path:'/tmp/entrelinhas-tools-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});await expect(page.locator('#video-tools .primary-action .button').filter({visible:true})).toHaveCount(1);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'/tmp/entrelinhas-tools-mobile.png',fullPage:true});
+  expect(outbound).toEqual([]);
 });
