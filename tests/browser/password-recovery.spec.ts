@@ -1,6 +1,16 @@
 import {test,expect} from '@playwright/test';
 import {mockAccess} from './fixtures';
+import {readFileSync} from 'node:fs';
 const password='SenhaNova123!';
+
+function emailAction(file:string,hash:string){
+ const html=readFileSync(new URL(`../../supabase/templates/${file}`,import.meta.url),'utf8');
+ const href=html.match(/href="([^"]*token_hash=[^"]+)"/)?.[1];
+ if(!href)throw new Error('O template precisa de um botão com token de autenticação.');
+ const url=new URL(href.replace('{{ .TokenHash }}',hash).replaceAll('&amp;','&'));
+ expect(url.origin).toBe('https://rmvitor.github.io');
+ return './'+url.pathname.replace('/Video_Translate/','')+url.search;
+}
 
 test('signup checks update while typing and password visibility works without submitting or storing the password',async({page,context})=>{
  const fixture=await mockAccess(context,{session:false});
@@ -96,5 +106,18 @@ test('signed-in password change uses the existing session and displays server pa
 test('custom token-hash recovery callback works without a PKCE verifier in a different browser',async({page,context})=>{
   const fixture=await mockAccess(context,{session:false});let verified=false;
   await context.route('**/auth/v1/verify',route=>{expect(route.request().postDataJSON()).toMatchObject({token_hash:'opaque-fixture-hash',type:'recovery'});verified=true;return route.fulfill({contentType:'application/json',body:JSON.stringify(fixture.session)});});
-  await page.goto('./nova-senha/?token_hash=opaque-fixture-hash&type=recovery');await expect(page.locator('#recovery-form')).toBeVisible();expect(verified).toBe(true);await expect(page).toHaveURL(/\/nova-senha\/$/);await expect(page.locator('#app')).not.toBeVisible();
+  await page.goto(emailAction('reset-password.html','opaque-fixture-hash'));await expect(page.locator('#recovery-form')).toBeVisible();expect(verified).toBe(true);await expect(page).toHaveURL(/\/nova-senha\/$/);await expect(page.locator('#app')).not.toBeVisible();
+});
+
+test('the signup email template verifies its token and still requires master approval',async({page,context})=>{
+ const fixture=await mockAccess(context,{session:false,status:'pending'});let verified=false;
+ await context.route('**/auth/v1/verify',route=>{expect(route.request().postDataJSON()).toMatchObject({token_hash:'signup-fixture-hash',type:'signup'});verified=true;return route.fulfill({contentType:'application/json',body:JSON.stringify(fixture.session)});});
+ await page.goto(emailAction('confirm-signup.html','signup-fixture-hash'));await expect(page.getByRole('heading',{name:'E-mail confirmado'})).toBeVisible();expect(verified).toBe(true);await expect(page).toHaveURL(/\/confirmar-email\/$/);await expect(page.locator('#app')).not.toBeVisible();
+ await page.getByRole('link',{name:'Continuar',exact:true}).click();await expect(page.locator('#access-reason')).toContainText('aprovação');await expect(page.locator('#app')).not.toBeVisible();
+});
+
+test('an expired email-template token cannot use an unrelated signed-in session',async({page,context})=>{
+ await mockAccess(context);
+ await context.route('**/auth/v1/verify',route=>route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({error_code:'otp_expired',msg:'Email link is invalid or has expired'})}));
+ await page.goto(emailAction('confirm-signup.html','expired-fixture-hash'));await expect(page.locator('#resend-confirmation-form')).toBeVisible();await expect(page.locator('#access-screen')).toContainText('inválido ou expirou');await expect(page.locator('#app')).not.toBeVisible();expect(new URL(page.url()).searchParams.has('token_hash')).toBe(false);
 });

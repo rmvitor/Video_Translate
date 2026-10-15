@@ -1,6 +1,6 @@
 # Ativar usuários no Entrelinhas
 
-O aplicativo já está configurado para o projeto `ntlcwlpvwkvrojodmyze`, em `https://ntlcwlpvwkvrojodmyze.supabase.co`. A chave publishable está em `public/access-config.json`; não é necessário criar variáveis no GitHub para usar essa configuração. Antes da ativação, confirme a instalação completa do SQL, publique a função e configure a conta master. A entrega deve ficar na branch de desenvolvimento até validar o acesso; a versão atual do Pages pode continuar funcionando enquanto isso.
+O aplicativo já está publicado e configurado para o projeto `ntlcwlpvwkvrojodmyze`, em `https://ntlcwlpvwkvrojodmyze.supabase.co`. A chave publishable está em `public/access-config.json`; não é necessário criar variáveis no GitHub para usar essa configuração. Para vincular os e-mails às páginas existentes, use o [guia direto com URLs e templates prontos](AUTH_EMAIL_SETUP.md). Configurar e-mails em um projeto já ativo não exige repetir migrações, atribuir o master novamente ou republicar a função.
 
 ## 1. Criar o projeto
 
@@ -19,6 +19,8 @@ O SQL cria somente contas/permissões, sessões e histórico de acesso. As tabel
 Todas as novas contas começam como **pending**. Permissões não vêm de metadados fornecidos pelo usuário. O navegador pode consultar sua própria situação; não pode editar permissões ou consultar sessões/histórico. Operações administrativas são executadas pela função, com autorização conferida no banco.
 
 ## 3. Configurar e-mail e recuperação de senha
+
+Para configurar o projeto publicado, siga [Vincular confirmação de e-mail e recuperação de senha](AUTH_EMAIL_SETUP.md), com os modelos HTML prontos para colar no painel. As opções e os detalhes de compatibilidade estão abaixo.
 
 Em **Authentication → URL Configuration**, mantenha **Site URL** como `https://rmvitor.github.io/Video_Translate/` e acrescente estas **Redirect URLs**:
 
