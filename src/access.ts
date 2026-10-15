@@ -1,7 +1,8 @@
 import { createClient, type Session, type SupabaseClient, type AuthError } from '@supabase/supabase-js';
 import { authStorage } from './auth-storage.mjs';
 import { publicAccessConfig, leaseDeadline, accessPayload } from './access-protocol.mjs';
-import { passwordPolicy, passwordRequirements, passwordError } from './password-policy.mjs';
+import { passwordPolicy, passwordError } from './password-policy.mjs';
+import {enhancePasswordInputs,concealPasswords,bindPasswordChecklist} from './password-fields';
 export type AccessProfile = { id: string; email: string; display_name: string; role: 'user'|'master'; status: string; expires_at?: string };
 type Options = { lock: () => Promise<void>; unlock: (profile: AccessProfile) => Promise<void>; toast: (message: string) => void };
 type AuthPage = ''|'recuperar-senha'|'nova-senha'|'confirmar-email';
@@ -21,7 +22,7 @@ export function createAccess(options: Options) {
   let transition=Promise.resolve();
   shell.hidden=true; shell.inert=true;
   const policy=()=>config?.passwordPolicy||passwordPolicy();
-  const requirements=(id:string)=>`<ul class="password-requirements" id="${id}">${passwordRequirements(policy()).map(rule=>`<li>${esc(rule)}</li>`).join('')}<li>Evite senhas reutilizadas ou expostas. As regras adicionais do Supabase também se aplicam.</li></ul>`;
+  const requirements=(id:string)=>`<ul class="password-requirements" id="${id}" aria-label="Requisitos da senha"></ul><p class="password-help">Use uma senha exclusiva. Senhas conhecidas como expostas podem ser recusadas.</p>`;
   function cleanCallback(){history.replaceState({},'',pageURL(page)+(callbackFailure?'?link=invalido':''));}
   async function navigate(next:AuthPage,message=''){
     page=next;callbackFailure=false;confirmationComplete=false;history.pushState({},'',pageURL(page));
@@ -52,6 +53,13 @@ export function createAccess(options: Options) {
     else if(session){heading='Sua conta';content=`<strong>${esc(session.user.email)}</strong><p id="access-reason">${esc(message)}</p><div class="inline-actions"><button class="button primary" id="retry-access">Verificar acesso novamente</button><button class="button secondary" id="gate-signout">Sair da conta</button></div>`;}
     else content=`<form id="signin-form">${field('E-mail','access-email','email','username')}<label class="field-label">Senha<input id="access-password" type="password" autocomplete="current-password" minlength="1" required aria-describedby="signup-requirements" /></label><div id="signup-password-help" hidden>${requirements('signup-requirements')}</div><label class="field-label" id="signup-name-field" hidden>Nome<input id="access-name" maxlength="120" autocomplete="name" /></label><label class="field-label" id="signup-contact-field" hidden>Contato (telefone ou WhatsApp)<input id="access-contact" type="tel" maxlength="120" autocomplete="tel" /></label><button class="button primary" id="auth-submit">Entrar</button><p id="auth-error" role="alert"></p></form><div class="inline-actions"><button class="text-button" id="toggle-signup">Solicitar acesso</button><a class="text-button" id="forgot-password" data-auth-page="recuperar-senha" href="${pageURL('recuperar-senha')}">Esqueci minha senha</a></div>`;
     screen.innerHTML=`<div class="access-card"><a class="access-brand" data-auth-page="" href="${pageURL('')}">entrelinhas<span>.</span></a><h1>${heading}</h1>${content}<p class="access-status" id="access-status" role="status" aria-live="polite">${!session||page?esc(message):''}</p></div>`;
+    screen.querySelectorAll<HTMLButtonElement>('form button').forEach(button=>button.type='submit');
+    enhancePasswordInputs(screen);
+    for(const [inputId,listId] of [['access-password','signup-requirements'],['recovery-password','recovery-requirements']]){
+      const input=screen.querySelector<HTMLInputElement>('#'+inputId),list=screen.querySelector<HTMLElement>('#'+listId);
+      if(input&&list)bindPasswordChecklist(input,list,policy());
+    }
+    screen.querySelector('#access-password')?.removeAttribute('aria-describedby');
     for(const id of ['access-email','reset-email','confirmation-email']){const input=screen.querySelector<HTMLInputElement>('#'+id);if(input)input.value=rememberedEmail;}
     screen.querySelectorAll<HTMLAnchorElement>('[data-auth-page]').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();if(authBusy)return;rememberedEmail=screen.querySelector<HTMLInputElement>('input[type=email]')?.value.trim()||rememberedEmail;recovery=false;void navigate(link.dataset.authPage as AuthPage);}));
     let signup=false;
@@ -61,11 +69,14 @@ export function createAccess(options: Options) {
       for(const id of ['access-name','access-contact'])screen.querySelector<HTMLInputElement>('#'+id)!.required=signup;
       screen.querySelector('h1')!.textContent=signup?'Solicitar cadastro':'Entre para continuar';screen.querySelector('#auth-submit')!.textContent=signup?'Solicitar acesso':'Entrar';screen.querySelector('#toggle-signup')!.textContent=signup?'Já tenho uma conta':'Solicitar acesso';
       const password=screen.querySelector<HTMLInputElement>('#access-password')!;password.autocomplete=signup?'new-password':'current-password';password.minLength=signup?policy().minimumLength:1;
+      if(signup)password.setAttribute('aria-describedby','signup-requirements signup-requirements-summary');else password.removeAttribute('aria-describedby');
+      concealPasswords(screen);
     });
     async function submit(formId:string,action:(form:HTMLFormElement)=>Promise<void>){
       const form=screen.querySelector<HTMLFormElement>('#'+formId);if(!form)return;
+      form.addEventListener('input',()=>{if(!authBusy)form.querySelector('#auth-error')!.textContent='';});
       form.addEventListener('submit',async event=>{
-        event.preventDefault();if(!client||authBusy)return;const button=form.querySelector<HTMLButtonElement>('button')!,label=button.textContent;
+        event.preventDefault();if(!client||authBusy)return;const button=form.querySelector<HTMLButtonElement>('button[type=submit]')!,label=button.textContent;
         authBusy=true;button.disabled=true;button.textContent='Aguarde…';form.setAttribute('aria-busy','true');const error=form.querySelector('#auth-error')!;error.textContent='';
         try{await action(form);}catch(err){if(version===uiVersion)error.textContent=err instanceof Error?err.message:'Não foi possível conectar ao serviço. Tente novamente.';}
         finally{authBusy=false;if(version===uiVersion){button.disabled=false;button.textContent=button.dataset.nextLabel||label;form.removeAttribute('aria-busy');}}
@@ -134,7 +145,7 @@ export function createAccess(options: Options) {
       if(response.profile.id!==session.user.id)throw new Error('Resposta de autorização inválida.');
       deadline=until;profile=response.profile;
       if(!granted){await transition;await options.unlock(profile!);if(epoch!==generation)return;granted=true;}
-      screen.querySelectorAll<HTMLInputElement>('input[type=password]').forEach(input=>{input.value='';});
+      concealPasswords(screen,true);
       screen.hidden=true;shell.hidden=false;shell.inert=false;document.dispatchEvent(new CustomEvent('access-changed'));
     }catch{if(epoch===generation)await lock('Não foi possível confirmar sua autorização. Confira a conexão e tente novamente.');}
     finally{checking=false;}

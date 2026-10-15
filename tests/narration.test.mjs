@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildNarrationPlan,buildVideoNarrationPlan,narrationCueTiming,narrationRate,pronunciationRuns,playbackRateForVideo} from '../src/narration-plan.mjs';
+import {buildNarrationPlan,buildVideoNarrationPlan,narrationCueTiming,narrationPlaybackRate,pronunciationRuns} from '../src/narration-plan.mjs';
 import {trimPadding,pcm16,encodeWav} from '../src/voice-audio.mjs';
 
 test('continuous planning joins Portuguese sections without dropping words or section markers',()=>{
@@ -37,9 +37,15 @@ test('continuous WAV assembly trims padding, preserves internal pauses and joins
  assert.equal(view.getUint32(40,true),8);assert.equal(view.getUint32(24,true),22050);
  assert.deepEqual([...new Int16Array(wav,44)],[16383,-16384,32767,-32768]);
 });
-test('speech pace adapts to the video within an intelligible range instead of pausing or skipping content',()=>{
- assert.equal(playbackRateForVideo(12,10),1.2);assert.equal(playbackRateForVideo(50,10),2);
- assert.equal(playbackRateForVideo(8,10,1,1.5),1.2000000000000002);assert.equal(playbackRateForVideo(0,10,.8),.8);
+test('long padding at joins is removed while every speech sample and internal pause remains',()=>{
+ const input=new Float32Array(5000);input.fill(.2,1800,1900);input.fill(-.2,2700,2800);
+ const trimmed=trimPadding(input,1000);
+ assert.equal(trimmed.length,1060);assert.equal(trimmed.filter(value=>value!==0).length,200);
+ assert.equal(trimmed.slice(130,930).every(value=>value===0),true);
+});
+test('continuous narration uses a stable natural pace changed only by the player speed',()=>{
+ assert.equal(narrationPlaybackRate(),1);assert.equal(narrationPlaybackRate(1.25),1.25);
+ assert.equal(narrationPlaybackRate(.8),.8);assert.equal(narrationPlaybackRate(3),2);assert.equal(narrationPlaybackRate(.25),.6);
 });
 
 test('default narration stays Portuguese and cached audio seeking follows cues without changing the rate',async()=>{
@@ -64,10 +70,5 @@ test('video synthesis retains words and creates sample-aligned boundaries for un
  assert.deepEqual(narrationCueTiming(segments,marks,7,'0'),{id:0,videoStart:0,videoEnd:5,audioStart:0,audioEnd:4});
  assert.deepEqual(narrationCueTiming(segments,marks,7,'1'),{id:1,videoStart:6,videoEnd:8,audioStart:4,audioEnd:7});
  assert.equal(narrationCueTiming(segments,marks,7,'2'),null);
- // Per-cue pace is .8x then 1.5x rather than a single global ratio.
- assert.equal(narrationRate(narrationCueTiming(segments,marks,7,'0'),2,2.5),.8);
- assert.equal(narrationRate(narrationCueTiming(segments,marks,7,'1'),5.5,7),1.5);
- assert.equal(narrationRate(narrationCueTiming(segments,marks,7,'1'),5.5,7,1.25),1.875);
- assert.equal(narrationRate({videoStart:0,videoEnd:1,audioStart:0,audioEnd:8},0,0),2);
- assert.equal(narrationRate({videoStart:0,videoEnd:10,audioStart:0,audioEnd:1},0,0),.6);
+
 });

@@ -13,6 +13,8 @@ const context=await chromium.launchPersistentContext(profile,{executablePath:pro
 try{
   await localAccessFixture(context);const transfers=await cloudModelTransport(context);
   await context.addInitScript(()=>{
+    const pause=HTMLMediaElement.prototype.pause;
+    HTMLMediaElement.prototype.pause=function(){if(this instanceof HTMLAudioElement&&window.__captureVoicePauses&&!this.ended&&this.currentTime<this.duration-.05)window.__voicePauses++;return pause.call(this);};
     const original=HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play=function(){const media=this;return original.call(this).then(()=>{if(media instanceof HTMLAudioElement)(window).__testVoiceAudio=media;});};
     const NativeWorker=window.Worker;
@@ -60,21 +62,25 @@ try{
   await page.evaluate(async bytes=>{
     const db=await new Promise(resolve=>{const request=indexedDB.open('entrelinhas-local:user:00000000-0000-4000-8000-000000000990',2);request.onsuccess=()=>resolve(request.result);});
     const video=new Blob([new Uint8Array(bytes)],{type:'video/mp4'});
-    await new Promise(resolve=>{const tx=db.transaction('projects','readwrite');tx.objectStore('projects').put({id:'public-video',title:'Teste público de vídeo',filename:'public-voice-test.mp4',createdAt:2,size:video.size,lastModified:0,duration:20,video,sourceLanguage:'en',segments:[{start:0,end:.5,original:'Open Insight.',translated:'Abra o Insight.'},{start:1,end:19.8,original:'Check Home Management and proceed with all data.',translated:'Confira Home Management e prossiga com todos os dados.'}]});tx.oncomplete=resolve;});db.close();
+    await new Promise(resolve=>{const tx=db.transaction('projects','readwrite');tx.objectStore('projects').put({id:'public-video',title:'Teste público de vídeo',filename:'public-voice-test.mp4',createdAt:2,size:video.size,lastModified:0,duration:20,video,sourceLanguage:'en',segments:[{start:0,end:.5,original:'Open Insight.',translated:'Abra o Insight.'},{start:12,end:19.8,original:'Check Home Management and proceed with all data.',translated:'Confira Home Management e prossiga com todos os dados.'}]});tx.oncomplete=resolve;});db.close();
   },Array.from(await readFile(videoFile)));
   await page.reload();await page.locator('#app').waitFor({state:'visible'});
   await page.getByRole('button',{name:'Minha biblioteca'}).click();await page.getByRole('tab',{name:'Vídeos',exact:true}).click();await page.locator('[data-open="public-video"]').click();
   await page.locator('#video-settings > summary').click();if(await page.locator('[data-narration-language]').filter({visible:true}).inputValue()!=='pt-BR')throw new Error('Portuguese must be the default');
   await page.locator('#video-narration').check();await page.locator('#library-outlet #workspace-view').waitFor({state:'visible'});await page.waitForFunction(()=>document.querySelector('#narration-status').textContent==='Narração contínua pronta. Dê play para ouvir.',undefined,{timeout:180000});
-  await page.evaluate(()=>{window.__testVoiceAudio=undefined;window.__automaticPauses=0;window.__pauseDetails=[];document.querySelector('#video').addEventListener('pause',event=>{window.__pauseDetails.push({time:event.target.currentTime,ended:event.target.ended});if(!event.target.ended&&event.target.currentTime>.1&&event.target.currentTime<event.target.duration-.1)window.__automaticPauses++;});});
+  await page.evaluate(()=>{window.__testVoiceAudio=undefined;window.__voicePauses=0;window.__captureVoicePauses=true;window.__automaticPauses=0;window.__pauseDetails=[];document.querySelector('#video').addEventListener('pause',event=>{window.__pauseDetails.push({time:event.target.currentTime,ended:event.target.ended});if(!event.target.ended&&event.target.currentTime>.1&&event.target.currentTime<event.target.duration-.1)window.__automaticPauses++;});});
   await page.locator('#video').evaluate(video=>video.play());await page.waitForFunction(()=>window.__testVoiceAudio?.duration>.3&&!window.__testVoiceAudio.paused);
   await page.waitForFunction(()=>document.querySelector('#video').currentTime>1.3);
   if(await page.locator('#video').evaluate(video=>video.paused)||await page.evaluate(()=>window.__automaticPauses!==0))throw new Error('Narration automatically paused the video: '+JSON.stringify(await page.evaluate(()=>({time:document.querySelector('#video').currentTime,ended:document.querySelector('#video').ended,pauses:window.__pauseDetails}))));
+  await page.waitForFunction(()=>window.__testVoiceAudio.currentTime>window.__voiceMarks[1].start+.15,undefined,{timeout:6000});
+  if(await page.evaluate(()=>window.__voicePauses!==0||document.querySelector('#video').currentTime>=12))throw new Error('Speech waited for a later cue timestamp');
+  if(await page.evaluate(()=>window.__testVoiceAudio.playbackRate)!==1)throw new Error('Speech pace changed without a player speed change');
+  await page.evaluate(()=>{window.__captureVoicePauses=false;});
   const preparedURL=await page.evaluate(()=>window.__testVoiceAudio.src);
   const marks=await page.evaluate(()=>window.__voiceMarks);
   if(marks.length!==2||marks[0].id!=='0'||marks[0].start!==0||marks[1].id!=='1'||marks[1].start<=0)throw new Error('Video cue boundaries were not generated separately: '+JSON.stringify(marks));
   await page.locator('#video').evaluate(video=>video.pause());if(!await page.evaluate(()=>window.__testVoiceAudio.paused))throw new Error('Manual video pause did not pause narration');
-  for(const time of [1.5,0,12,1.5]){
+  for(const time of [12.5,0,16,12.5]){
     await page.locator('#video').evaluate((video,time)=>{video.currentTime=time;},time);
     await page.waitForFunction(()=>!document.querySelector('#video').seeking&&document.querySelector('#narration-status').textContent==='Narração contínua pronta. Dê play para ouvir.');
     if(!await page.locator('#video').evaluate(video=>video.paused))throw new Error('Seeking resumed a manually paused video');
@@ -89,7 +95,7 @@ try{
   await page.waitForFunction(()=>document.querySelector('#narration-status').textContent==='Narração concluída.',undefined,{timeout:60000});
   await page.locator('#video').evaluate(video=>{video.currentTime=0;});await page.waitForFunction(()=>document.querySelector('#narration-status').textContent==='Narração contínua pronta. Dê play para ouvir.');if(await page.evaluate(()=>window.__testVoiceAudio.src)!==preparedURL)throw new Error('Rewinding after completion regenerated narration');
   await page.locator('#video-narration').uncheck();if(await page.locator('#video').evaluate(video=>video.muted))throw new Error('Original mute state was not restored');
-  console.log('Real PT-BR video playback, cue-aligned captions, cached repeated seeks, manual pause and complete narration passed without automatic video pauses.');
+  console.log('Real PT-BR continuous speech crossed a large source gap with no voice or video pauses; captions, cached seeks and manual pause passed.');
   await context.unrouteAll({behavior:'wait'});await localAccessFixture(context);await context.setOffline(true);
   const offline=await run(true);if(offline.some(audio=>audio.peak<100||audio.seconds<.3))throw new Error('Offline voice failed');
   console.log('Fresh voice worker generated Portuguese, English and continuous bilingual audio offline from cached models:',JSON.stringify(offline));

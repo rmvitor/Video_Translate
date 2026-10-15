@@ -63,9 +63,10 @@ export function buildNarrationPlan(items, mode = 'pt-BR', terms = '') {
   return chunks;
 }
 
-export function playbackRateForVideo(duration, sourceDuration, requested = 1, videoRate = 1) {
-  const fit=duration>0&&sourceDuration>0?duration/sourceDuration:1;
-  return Math.min(2,Math.max(.6,requested*fit*Math.max(.25,videoRate)));
+export function narrationPlaybackRate(videoRate = 1) {
+  // Keep the speaker's natural pace. Subtitle length and gaps never stretch
+  // speech or trigger a stop; only an explicit player speed change affects it.
+  return Math.min(2,Math.max(.6,videoRate));
 }
 
 // A cue can have several language runs; its first audio mark defines its start.
@@ -92,12 +93,4 @@ export function narrationCueTiming(segments,marks,duration,id){
   const ids=[...starts.keys()],index=ids.indexOf(String(id)),segment=segments[Number(id)];
   if(index<0||!segment)return null;
   return {id:Number(id),videoStart:segment.start,videoEnd:segment.end,audioStart:starts.get(String(id)),audioEnd:starts.get(ids[index+1])??duration};
-}
-export function narrationRate(timing,audioTime,videoTime,videoRate=1){
-  const span=timing.videoEnd-timing.videoStart,nominal=(timing.audioEnd-timing.audioStart)/Math.max(.001,span)*videoRate;
-  // Correct small clock drift with pace, preserving every word. Long cues may
-  // exceed the natural speed range; captions then follow the spoken cue.
-  const target=timing.audioStart+Math.min(span,Math.max(0,videoTime-timing.videoStart))*nominal/videoRate;
-  const correction=nominal>=.6&&nominal<=2?Math.min(.12,Math.max(-.12,(target-audioTime)*.35)):0;
-  return Math.min(2,Math.max(.6,nominal+correction));
 }

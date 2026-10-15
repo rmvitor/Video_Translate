@@ -46,6 +46,8 @@ A amostra é pequena e selecionada para revelar riscos. Ela não mede a frequên
 
 ## Narração e sincronia
 
-A voz natural de vídeo agora sintetiza cada trecho separadamente e junta os resultados em um único WAV local. O início de cada trecho corresponde à posição real de seus samples; o retorno reutiliza o áudio preparado. A velocidade é ajustada por trecho e as legendas/destaques acompanham o trecho efetivamente narrado. O vídeo não é pausado automaticamente.
+A voz natural de vídeo sintetiza os trechos separadamente e junta os resultados em um único WAV local. O início de cada trecho corresponde à posição real de seus samples; o retorno reutiliza o áudio preparado. As legendas e os destaques acompanham o trecho efetivamente narrado. O vídeo não é pausado automaticamente.
 
-O posicionamento **dentro** de um trecho ainda é proporcional, sem alinhamento por palavra. A velocidade tem limite de 0,6× a 2× para preservar inteligibilidade. Se uma tradução longa não couber no intervalo do original, a fala pode atrasar em relação à cena; a legenda acompanha a fala e o texto não é cortado. A voz pode aguardar o início do próximo trecho quando terminar cedo. Isso é diferente de pausar o vídeo. Alinhamento por palavra e edição dos tempos/textos são os próximos passos para sincronia mais precisa.
+Na versão 0.8.4, a leitura mantém a velocidade natural (1× com o player em 1×), sem esperar pelos horários dos próximos trechos e sem acelerar/desacelerar a cada legenda. Somente uma mudança de velocidade do player altera o ritmo, dentro dos limites de 0,6× a 2×. O silêncio excedente nas bordas dos áudios é removido; pausas de pontuação dentro da fala permanecem.
+
+Essa opção prioriza continuidade: a narração pode adiantar ou atrasar em relação às cenas, especialmente quando o original tem longos intervalos sem fala. A legenda acompanha a voz. Avançar e voltar reposiciona o áudio em memória, sem regenerar. O posicionamento **dentro** de um trecho ainda é proporcional, sem alinhamento por palavra. Alinhamento local por palavra e edição dos tempos/textos continuam sendo os próximos passos para sincronia mais precisa.

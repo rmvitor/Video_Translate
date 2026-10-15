@@ -218,3 +218,9 @@ Vídeos e páginas usam o mesmo painel: idioma, escolha da ação, explicação 
 ### Recuperação de falhas do Gemini na versão 0.8.3
 
 HTTP 503 indica indisponibilidade temporária da geração, mesmo que a consulta da chave e dos modelos tenha funcionado. O diálogo agora mostra o modelo em uso, permite escolher um modelo da lista já consultada e oferece **Tentar novamente** após HTTP 502/503/504. Os textos selecionados, a chave e a autorização permanecem no diálogo; cada novo envio depende de um clique, sem repetição ou troca automática de modelo para esses erros. Nada é salvo antes de revisar e aplicar a resposta.
+
+### Narração contínua e senha na versão 0.8.4
+
+- A narração não espera o início de cada legenda nem muda de velocidade entre trechos. O ritmo acompanha apenas a velocidade escolhida no player; o silêncio excedente nas emendas é removido, preservando a pontuação. O áudio preparado continua disponível para avançar/voltar e as legendas seguem a fala. A continuidade pode adiantar ou atrasar a voz em relação às cenas quando há grandes intervalos no original.
+- Cadastro e nova senha mostram os cinco requisitos com OK em tempo real: pelo menos 8 caracteres, maiúscula, minúscula, número e símbolo. A configuração pública agora espelha a política forte apresentada no Supabase. O servidor continua responsável por validar todas as regras.
+- Botão para mostrar/ocultar senha no login, cadastro, redefinição, confirmação e backup. O botão não envia o formulário; a senha volta a ficar oculta e é limpa ao liberar o acesso ou concluir o backup. Senhas de login existentes continuam aceitas e o backup mantém a política independente de mínimo de 8 caracteres.

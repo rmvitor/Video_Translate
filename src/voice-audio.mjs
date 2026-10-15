@@ -1,9 +1,9 @@
 // Trim only very quiet padding at the edges; never remove pauses inside speech.
 export function trimPadding(samples, sampleRate) {
-  const limit=Math.min(samples.length,Math.floor(sampleRate*.3)),keep=Math.floor(sampleRate*.03);
+  const keep=Math.floor(sampleRate*.03);
   let start=0,end=samples.length;
-  while(start<limit&&Math.abs(samples[start])<.001)start++;
-  while(end>samples.length-limit&&end>start&&Math.abs(samples[end-1])<.001)end--;
+  while(start<end&&Math.abs(samples[start])<.001)start++;
+  while(end>start&&Math.abs(samples[end-1])<.001)end--;
   return samples.subarray(Math.max(0,start-keep),Math.min(samples.length,end+keep));
 }
 export function encodeWav(parts,rate) {

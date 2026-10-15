@@ -1,5 +1,5 @@
 import type { Segment } from './types';
-import { buildNarrationPlan, buildVideoNarrationPlan, playbackRateForVideo, narrationPosition, narrationCueTiming, narrationRate } from './narration-plan.mjs';
+import { buildNarrationPlan, buildVideoNarrationPlan, narrationPlaybackRate, narrationPosition, narrationCueTiming } from './narration-plan.mjs';
 
 export type ReadingItem = {id:string;text:string;original?:string;sourceLanguage?:string};
 export type NarrationLanguage='mixed'|'pt-BR'|'en-US';
@@ -144,15 +144,13 @@ export class VideoNarration {
   private finished=false;
   private wasMuted=false;
   private manuallyMuted=false;
-  private startedAt=0;
-  private speechStart=0;
   private spokenCue:number|undefined;
   private publishedCue:number|undefined;
   private frame:number|undefined;
   get currentCue(){
     if(!this.enabled||!this.narrator.ready||this.finished)return undefined;
     const timing=this.narrator.cueTiming(this.getSegments());
-    if(timing)return this.video.currentTime+.03<timing.videoStart&&!this.video.ended?undefined:timing.id;
+    if(timing)return timing.id;
     return this.spokenCue;
   }
   private publishCue(force=false){const cue=this.currentCue;if(force||cue!==this.publishedCue){this.publishedCue=cue;this.onCue(cue);}}
@@ -186,14 +184,14 @@ export class VideoNarration {
   }
   private positionAudio(){
     const position=this.narrator.seekVideo(this.getSegments(),this.video.currentTime);if(!position)return false;
-    this.startedAt=position.startsAt;this.finished=position.finished;this.adjustRate();
+    this.finished=position.finished;this.adjustRate();
     this.onChange(position.finished?'Narração concluída.':this.video.paused?'Narração contínua pronta. Dê play para ouvir.':'Narração contínua. O vídeo segue sem pausas automáticas.');this.tick();this.publishCue(true);this.monitor();return true;
   }
   private start(){
     const segments=this.getSegments(),context=this.context();this.first=segments.findIndex(s=>s.end>this.video.currentTime);
     this.finished=false;if(this.first<0){this.finished=true;this.onChange('Narração concluída.');return;}
     const natural=this.narrator.usesNaturalVoice,begin=natural?0:this.first;
-    this.startedAt=Math.max(segments[this.first].start,this.video.currentTime);this.speechStart=segments[begin].start;this.narrator.englishTerms=context.englishTerms||'';
+    this.narrator.englishTerms=context.englishTerms||'';
     this.onChange('Preparando a narração contínua. Aguarde ficar pronta para dar play.');
     try{
       this.narrator.read(segments.slice(begin).map((s,index)=>({id:String(index+begin),text:s.translated,original:s.original,sourceLanguage:context.sourceLanguage||'en'})),id=>{
@@ -202,7 +200,7 @@ export class VideoNarration {
       },error=>{
         if(!this.enabled)return;this.finished=true;this.stopMonitor();this.publishCue(true);
         if(error){this.disable();this.onChange(error);}else this.onChange('Narração concluída.');
-      },this.narrator.rate*this.video.playbackRate,{paused:this.video.paused||this.video.currentTime<this.startedAt,retainAudio:true,alignVideoCues:natural,onReady:()=>{
+      },narrationPlaybackRate(this.video.playbackRate),{paused:this.video.paused,retainAudio:true,alignVideoCues:natural,onReady:()=>{
         if(!this.enabled)return;if(!this.manuallyMuted){this.video.muted=true;this.muteControl.checked=true;}
         if(this.video.ended){this.narrator.resume();this.onChange('Concluindo a narração sem cortar o texto…');return;}
         if(this.positionAudio())return;
@@ -212,16 +210,12 @@ export class VideoNarration {
   }
   private adjustRate(){
     if(!this.enabled)return;
-    const timing=this.narrator.cueTiming(this.getSegments());
-    if(timing&&!this.video.ended){this.narrator.setPlaybackRate(narrationRate(timing,this.narrator.audioPosition,this.video.currentTime,this.video.playbackRate));return;}
-    const last=this.getSegments().at(-1);this.narrator.setPlaybackRate(playbackRateForVideo(this.narrator.duration,(last?.end||this.video.duration)-this.speechStart,this.narrator.rate,this.video.playbackRate));
+    this.narrator.setPlaybackRate(narrationPlaybackRate(this.video.playbackRate));
   }
   private tick(){
     if(!this.enabled||this.finished)return;
     this.publishCue();
     if(this.video.paused||this.video.seeking||this.first<0)return;
-    const timing=this.narrator.cueTiming(this.getSegments());
-    if(this.video.currentTime<(timing?.videoStart??this.startedAt)-.02){this.narrator.pause();return;}
-    this.adjustRate();this.narrator.resume();
+    this.narrator.resume();
   }
 }

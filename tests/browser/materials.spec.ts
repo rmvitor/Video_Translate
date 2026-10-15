@@ -287,6 +287,16 @@ test('local voice preparation completes its status and cancellation ignores late
   await page.locator('#video-narration').check();await page.evaluate(()=>(window as any).__voiceProgress());await expect(status).toContainText('Gerando');
   await page.evaluate(()=>(window as any).__voiceAudio());await expect(status).toHaveText('Narração contínua pronta.');await expect(page.locator('#narration-status')).toHaveText('Narração contínua pronta. Dê play para ouvir.');
   const source=await page.evaluate(()=>(window as any).__voiceElement.src);
+  // Speech reaches cue 2 before its original timestamp. Keep playing rather
+  // than waiting for that timestamp, and retain the audio for rewinding.
+  await page.evaluate(()=>{(window as any).__narrationPauses=0;const audio=(window as any).__voiceElement;audio.addEventListener('pause',()=>{if(!audio.ended&&!document.querySelector<HTMLVideoElement>('#video')!.paused)(window as any).__narrationPauses++;});});
+  await page.locator('#video').evaluate((video:HTMLVideoElement)=>video.play());
+  await expect.poll(()=>page.locator('#video').evaluate((video:HTMLVideoElement)=>video.currentTime)).toBeGreaterThan(1.4);
+  expect(await page.evaluate(()=>(window as any).__narrationPauses)).toBe(0);
+  expect(await page.evaluate(()=>(window as any).__voiceElement.ended)).toBe(true);
+  expect(await page.evaluate(()=>(window as any).__voiceElement.playbackRate)).toBe(1);
+  await page.locator('#video').evaluate((video:HTMLVideoElement)=>{video.pause();video.currentTime=0;});
+  await expect(page.locator('#narration-status')).toHaveText('Narração contínua pronta. Dê play para ouvir.');
   for(const time of [2.8,.5,3.5,0]){
     await page.locator('#video').evaluate((video:HTMLVideoElement,time)=>{video.currentTime=time;},time);
     await expect.poll(()=>page.locator('#video').evaluate((video:HTMLVideoElement)=>video.seeking)).toBe(false);

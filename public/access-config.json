@@ -1,1 +1,1 @@
-{"url":"https://ntlcwlpvwkvrojodmyze.supabase.co","publishableKey":"sb_publishable_UbA6NhMbxuBaSG7aGgLVnw_xMa7mq9R","passwordPolicy":{"minimumLength":8,"requiredCharacters":""}}
+{"url":"https://ntlcwlpvwkvrojodmyze.supabase.co","publishableKey":"sb_publishable_UbA6NhMbxuBaSG7aGgLVnw_xMa7mq9R","passwordPolicy":{"minimumLength":8,"requiredCharacters":"lower_upper_letters_digits_symbols"}}

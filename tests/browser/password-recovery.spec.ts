@@ -2,6 +2,30 @@ import {test,expect} from '@playwright/test';
 import {mockAccess} from './fixtures';
 const password='SenhaNova123!';
 
+test('signup checks update while typing and password visibility works without submitting or storing the password',async({page,context})=>{
+ const fixture=await mockAccess(context,{session:false});
+ await context.route('**/access-config.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({url:'http://127.0.0.1:4173',publishableKey:'sb_publishable_fixture',passwordPolicy:{minimumLength:8,requiredCharacters:'lower_upper_letters_digits_symbols'}})}));
+ await page.goto('./');await page.locator('#toggle-signup').click();
+ const checks=page.locator('#signup-requirements [data-met=true]'),input=page.locator('#access-password'),eye=page.locator('[data-password-toggle="access-password"]');
+ await expect(checks).toHaveCount(0);
+ for(const [text,count] of [['A',1],['Ab',2],['Abcdefg1',4],['Abcdefg1!',5],['Abcdefg1',4]] as const){await input.fill(text);await expect(checks).toHaveCount(count);}
+ await expect(page.locator('#signup-requirements-summary')).toHaveText('4 de 5 requisitos atendidos.');
+ await eye.click();await expect(input).toHaveAttribute('type','text');await expect(eye).toHaveAttribute('aria-pressed','true');await expect(eye).toHaveAccessibleName('Ocultar senha');
+ await eye.press('Enter');await expect(input).toHaveAttribute('type','password');await expect(input).toHaveValue('Abcdefg1');expect(fixture.calls.some(call=>call.path.endsWith('/signup'))).toBe(false);
+ await input.fill('Abcdefg1 ');await expect(page.locator('#signup-requirements [data-requirement=symbol]')).toHaveAttribute('data-met','false');
+ await page.locator('#access-email').fill('new@example.test');await page.locator('#access-name').fill('Novo usuário');await page.locator('#access-contact').fill('11999990000');await page.locator('#auth-submit').click();await expect(page.locator('#auth-error')).toContainText('símbolo');expect(fixture.calls.some(call=>call.path.endsWith('/signup'))).toBe(false);
+ await input.fill('Abcdefg1!');await expect(page.locator('#signup-requirements-summary')).toHaveText('Todos os requisitos atendidos.');await expect(page.locator('#auth-error')).toBeEmpty();
+ await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'/tmp/entrelinhas-password-checklist-mobile.png',fullPage:true});
+ await page.emulateMedia({colorScheme:'dark'});await expect(page.locator('html')).toHaveAttribute('data-theme','dark');await page.screenshot({path:'/tmp/entrelinhas-password-checklist-dark.png',fullPage:true});
+ await page.locator('#auth-submit').click();await expect(page.locator('#resend-confirmation-form')).toBeVisible();
+ expect(fixture.calls.filter(call=>call.path.endsWith('/signup'))).toHaveLength(1);expect(await page.evaluate(()=>JSON.stringify(localStorage)+JSON.stringify(sessionStorage))).not.toContain('Abcdefg1!');
+});
+
+test('login accepts existing passwords and clears a revealed password after authorization',async({page,context})=>{
+ await mockAccess(context,{session:false});await page.goto('./');await page.locator('#access-email').fill('fixture@example.test');await page.locator('#access-password').fill('antiga');await page.locator('[data-password-toggle="access-password"]').click();await expect(page.locator('#access-password')).toHaveAttribute('type','text');
+ await page.locator('#auth-submit').click();await expect(page.locator('#app')).toBeVisible();await expect(page.locator('#access-password')).toHaveValue('');await expect(page.locator('#access-password')).toHaveAttribute('type','password');await expect(page.locator('[data-password-toggle="access-password"]')).toHaveAttribute('aria-pressed','false');
+});
+
 test('recovery link crosses tabs with PKCE, saves the confirmed password and requires login with the new password',async({page,context})=>{
   const fixture=await mockAccess(context,{session:false});let saved='',redirect='';const updates:any[]=[];
   await context.route('**/auth/v1/recover*',route=>{const body=route.request().postDataJSON();expect(body.email).toBe('fixture@example.test');expect(body.code_challenge).toBeTruthy();expect(body.code_challenge_method).toBe('s256');redirect=new URL(route.request().url()).searchParams.get('redirect_to')!;return route.fulfill({contentType:'application/json',body:'{}'});});
@@ -16,8 +40,9 @@ test('recovery link crosses tabs with PKCE, saves the confirmed password and req
   expect(new URL(redirect).pathname).toBe('/Video_Translate/nova-senha/');
   const callback=new URL(redirect);callback.searchParams.set('code','fixture-code');const next=await context.newPage();await next.goto(callback.href);await expect(next.locator('#recovery-form')).toBeVisible();await expect(next.locator('#app')).not.toBeVisible();
   await expect(next).toHaveURL(/\/nova-senha\/$/);expect(fixture.calls.some(call=>call.path.endsWith('/access-control'))).toBe(false);
-  await next.locator('#recovery-password').fill(password);await next.locator('#recovery-confirmation').fill('OutraSenha123!');await next.locator('#save-password').click();await expect(next.locator('#auth-error')).toContainText('não coincidem');expect(updates).toHaveLength(0);
-  await next.locator('#recovery-confirmation').fill(password);await next.locator('#save-password').click();await expect(next.locator('#access-status')).toContainText('Senha alterada com sucesso');await expect(next.locator('#signin-form')).toBeVisible();await expect(next.locator('#app')).not.toBeVisible();expect(updates).toEqual([password]);
+  await next.locator('#recovery-password').fill(password);await next.locator('[data-password-toggle="recovery-password"]').click();await expect(next.locator('#recovery-password')).toHaveAttribute('type','text');expect(updates).toHaveLength(0);
+  await next.locator('#recovery-confirmation').fill('OutraSenha123!');await next.locator('[data-password-toggle="recovery-confirmation"]').click();await expect(next.locator('#recovery-confirmation')).toHaveAttribute('type','text');await next.locator('#save-password').click();await expect(next.locator('#auth-error')).toContainText('não coincidem');expect(updates).toHaveLength(0);
+  await next.locator('#recovery-confirmation').fill(password);await next.locator('#recovery-confirmation').press('Enter');await expect(next.locator('#access-status')).toContainText('Senha alterada com sucesso');await expect(next.locator('#signin-form')).toBeVisible();await expect(next.locator('#app')).not.toBeVisible();expect(updates).toEqual([password]);
   await next.locator('#access-password').fill('SenhaAntiga123!');await next.locator('#auth-submit').click();await expect(next.locator('#auth-error')).toContainText('Não foi possível entrar');
   await next.locator('#access-password').fill(password);await next.locator('#auth-submit').click();await expect(next.locator('#app')).toBeVisible();
   expect(await next.evaluate(()=>document.baseURI)).toBe('http://127.0.0.1:4173/Video_Translate/');
@@ -54,7 +79,7 @@ test('signup displays configured password requirements and confirmation callback
   const fixture=await mockAccess(context,{session:false,status:'pending'});let redirect='';
   await context.route('**/access-config.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({url:'http://127.0.0.1:4173',publishableKey:'sb_publishable_fixture',passwordPolicy:{minimumLength:12,requiredCharacters:'lower_upper_letters_digits_symbols'}})}));
   await context.route('**/auth/v1/signup*',route=>{redirect=new URL(route.request().url()).searchParams.get('redirect_to')!;expect(route.request().postDataJSON().password).toBe(password);return route.fulfill({contentType:'application/json',body:JSON.stringify({user:fixture.session.user,session:null})});});
-  await page.goto('./');await page.locator('#toggle-signup').click();await expect(page.locator('#signup-requirements')).toContainText('12 caracteres');await expect(page.locator('#signup-requirements')).toContainText('maiúsculas');await expect(page.locator('#signup-requirements')).toContainText('símbolo');
+  await page.goto('./');await page.locator('#toggle-signup').click();await expect(page.locator('#signup-requirements')).toContainText('12 caracteres');await expect(page.locator('#signup-requirements')).toContainText('maiúscula');await expect(page.locator('#signup-requirements')).toContainText('símbolo');
   await page.locator('#access-email').fill('fixture@example.test');await page.locator('#access-name').fill('Teste');await page.locator('#access-contact').fill('11999990000');await page.locator('#access-password').fill('somenteletras');await page.locator('#auth-submit').click();await expect(page.locator('#auth-error')).toContainText('letras e números');
   await page.locator('#access-password').fill(password);await page.locator('#auth-submit').click();await expect(page).toHaveURL(/\/confirmar-email\/$/);await expect(page.locator('#resend-confirmation-form')).toBeVisible();await page.locator('#resend-confirmation').click();await expect(page.locator('#access-status')).toContainText('confirmação pendente');
   expect(new URL(redirect).pathname).toBe('/Video_Translate/confirmar-email/');const callback=new URL(redirect);callback.searchParams.set('code','confirmation-code');const next=await context.newPage();await next.goto(callback.href);await expect(next.getByRole('heading',{name:'E-mail confirmado'})).toBeVisible();await expect(next.locator('#app')).not.toBeVisible();
