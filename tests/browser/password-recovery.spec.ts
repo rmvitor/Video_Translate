@@ -36,6 +36,29 @@ test('login accepts existing passwords and clears a revealed password after auth
  await page.locator('#auth-submit').click();await expect(page.locator('#app')).toBeVisible();await expect(page.locator('#access-password')).toHaveValue('');await expect(page.locator('#access-password')).toHaveAttribute('type','password');await expect(page.locator('[data-password-toggle="access-password"]')).toHaveAttribute('aria-pressed','false');
 });
 
+test('signup shows rate limits and email restrictions without blaming valid fields or retrying automatically',async({page,context})=>{
+ await mockAccess(context,{session:false});let code='over_email_send_rate_limit',status=429,requests=0;
+ await context.route('**/access-config.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({url:'http://127.0.0.1:4173',publishableKey:'sb_publishable_fixture',passwordPolicy:{minimumLength:8,requiredCharacters:'lower_upper_letters_digits_symbols'}})}));
+ await context.route('**/auth/v1/signup*',route=>{requests++;return route.fulfill({status,headers:{'x-supabase-api-version':'2024-01-01'},contentType:'application/json',body:JSON.stringify({code,msg:'Private provider detail for fixture@example.test'})});});
+ await page.goto('./');await page.locator('#toggle-signup').click();
+ await page.locator('#access-email').fill('new@example.test');await page.locator('#access-password').fill(password);await page.locator('#access-name').fill('Teste');await page.locator('#access-contact').fill('11999990000');
+ await expect(page.locator('#signup-requirements [data-met=true]')).toHaveCount(5);await page.locator('#auth-submit').click();
+ await expect(page.locator('#auth-error')).toContainText('limite de envio de e-mails');await expect(page.locator('#auth-error')).toContainText('over_email_send_rate_limit · HTTP 429');
+ await expect(page.locator('#auth-error')).not.toContainText('Private provider detail');await expect(page.locator('#access-password')).toHaveValue(password);await expect(page.locator('#access-name')).toHaveValue('Teste');await expect(page.locator('#auth-submit')).toBeEnabled();expect(requests).toBe(1);
+ code='email_address_not_authorized';status=403;await page.locator('#auth-submit').click();await expect(page.locator('#auth-error')).toContainText('não está autorizado');await expect(page.locator('#auth-error')).toContainText('HTTP 403');expect(requests).toBe(2);
+ code='';status=429;await page.locator('#auth-submit').click();await expect(page.locator('#auth-error')).toContainText('limite de solicitações');await expect(page.locator('#auth-error')).not.toContainText('requisitos');expect(requests).toBe(3);
+ await expect(page.locator('#app')).not.toBeVisible();await expect(page.locator('#resend-confirmation-form')).toHaveCount(0);
+});
+
+test('signup explains a server rejection of a password exposed in data breaches without weakening local rules',async({page,context})=>{
+ await mockAccess(context,{session:false});
+ await context.route('**/access-config.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({url:'http://127.0.0.1:4173',publishableKey:'sb_publishable_fixture',passwordPolicy:{minimumLength:8,requiredCharacters:'lower_upper_letters_digits_symbols'}})}));
+ await context.route('**/auth/v1/signup*',route=>route.fulfill({status:422,contentType:'application/json',body:JSON.stringify({code:'weak_password',message:'Provider private password diagnostic',weak_password:{reasons:['pwned']}})}));
+ await page.goto('./');await page.locator('#toggle-signup').click();await page.locator('#access-email').fill('new@example.test');await page.locator('#access-password').fill(password);await page.locator('#access-name').fill('Teste');await page.locator('#access-contact').fill('11999990000');
+ await expect(page.locator('#signup-requirements [data-met=true]')).toHaveCount(5);await page.locator('#auth-submit').click();
+ await expect(page.locator('#auth-error')).toContainText('vazamentos');await expect(page.locator('#auth-error')).toContainText('weak_password');await expect(page.locator('#auth-error')).not.toContainText('Provider private');await expect(page.locator('#app')).not.toBeVisible();
+});
+
 test('default recovery email redirects through verification and PKCE across tabs, saves the password and requires login',async({page,context})=>{
   const fixture=await mockAccess(context,{session:false});let saved='',redirect='';const updates:any[]=[];
   await context.route('**/auth/v1/recover*',route=>{const body=route.request().postDataJSON();expect(body.email).toBe('fixture@example.test');expect(body.code_challenge).toBeTruthy();expect(body.code_challenge_method).toBe('s256');redirect=new URL(route.request().url()).searchParams.get('redirect_to')!;return route.fulfill({contentType:'application/json',body:'{}'});});

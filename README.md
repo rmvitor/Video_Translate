@@ -239,3 +239,7 @@ Use o [guia de vinculação das páginas, URLs e templates](docs/AUTH_EMAIL_SETU
 ### Diagnóstico de links de acesso na versão 0.8.6
 
 Recuperação e confirmação continuam aceitando os links dos e-mails padrão do Supabase, com PKCE e os redirecionamentos próprios. A tela agora diferencia endereço aberto sem sessão, verificador ausente no navegador/perfil, expiração/uso anterior informado pelo Auth e falha de serviço/conexão. Os motivos reaparecem após recarregar sem conservar tokens na URL. Um callback inválido continua impedindo a alteração de senha ou confirmação com uma sessão alheia já aberta. A documentação separa os passos com e sem SMTP; mudar os arquivos do app não libera a edição de templates nem altera o painel hospedado.
+
+### Erros de cadastro e envio na versão 0.8.7
+
+Cadastro, recuperação e reenvio de confirmação mostram a causa conhecida da recusa e uma referência segura, incluindo HTTP 429, cota de e-mails, destinatário não autorizado, cadastro desabilitado e senha recusada pelo servidor. Dados internos do provedor não aparecem no texto de erro. Os campos permanecem preenchidos para uma tentativa manual; o app não repete o pedido automaticamente. Veja [limites e envio para novos usuários](docs/AUTH_EMAIL_SETUP.md#6-cadastro-recusado-mesmo-com-os-campos-válidos). A correção das mensagens não altera cotas do Supabase ou do provedor; SMTP, domínio e limites precisam ser configurados no painel.

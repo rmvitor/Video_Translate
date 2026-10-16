@@ -119,3 +119,21 @@ Não cole credenciais SMTP no repositório, no aplicativo ou no chat. O app cont
 Se o e-mail não chegar, confira spam, remetente autorizado, registros de envio no provedor, logs do Auth e limites de envio. A mensagem genérica de recuperação do app não confirma que uma conta exista ou que a mensagem tenha chegado à caixa de entrada. Se o botão abrir a página errada, reveja Site URL, Redirect URLs e o template, e solicite um link novo.
 
 Os testes automatizados validam o SDK, as páginas e o token hash com respostas simuladas; não enviam e-mails reais nem alteram senhas de usuários reais. A validação final de entrega depende das configurações salvas no seu projeto e de um e-mail de teste sob seu controle.
+
+## 6. Cadastro recusado mesmo com os campos válidos
+
+Os requisitos locais da senha não garantem que o servidor aceite a solicitação. Na versão 0.8.7, cadastro, recuperação e reenvio de confirmação apresentam explicações específicas e uma referência de suporte com o código conhecido e o status HTTP. Mensagens internas do provedor, e-mails e detalhes do banco não são reproduzidos. A existência de contas continua sem ser confirmada pela interface.
+
+| Resposta | Significado e próximo passo |
+| --- | --- |
+| HTTP **429** | Limite de uso atingido. O status sozinho não identifica se é a cota de e-mails ou a frequência de requisições. Confira **Authentication → Rate Limits** e **Logs → Auth**. Aguarde a janela liberar antes de reenviar; alterar senha ou dados não resolve essa recusa. |
+| `over_email_send_rate_limit` | Limite de envio de e-mails do projeto. Pedidos de cadastro, recuperação e reenvio podem disputar a mesma cota de envio. Confira o provedor e o limite configurado. |
+| `over_request_rate_limit` | Limite de solicitações. Confira a frequência e as regras de requisições/IP do Auth, conforme os logs. |
+| `email_address_not_authorized` | Destinatário não autorizado no serviço de envio. Sem SMTP próprio, o serviço padrão só envia para endereços da equipe do projeto, segundo a documentação oficial. Configure SMTP próprio para clientes. |
+| `weak_password` | A política do servidor recusou a senha. Ela pode cumprir os requisitos de composição e ainda ser rejeitada por constar em vazamentos. Escolha uma senha exclusiva; mantenha as políticas fortes. |
+| `signup_disabled`, `email_provider_disabled` | Cadastro ou provedor de e-mail desabilitado. Confira **Sign In / Providers**. |
+| Erro ao enviar confirmação ou registrar conta | O administrador precisa conferir os logs do Auth e do provedor/banco. O status 500 sozinho não autoriza concluir que seja SMTP ou uma migration. |
+
+Um log como `POST | 429 | /auth/v1/signup` confirma o limite de uso, sem mostrar o código específico da resposta. O aplicativo não repete automaticamente a tentativa nem muda regras de senha, confirmação ou aprovação para contornar a recusa. Aguardar libera apenas limites temporários; para envio regular aos usuários, prepare SMTP próprio e confira os limites adequados ao uso.
+
+O envio padrão do Supabase é destinado a testes e tem uma cota reduzida e mutável. Verifique a [documentação oficial de SMTP](https://supabase.com/docs/guides/auth/auth-smtp) e a [fonte oficial](https://github.com/supabase/supabase/blob/master/apps/docs/content/guides/auth/auth-smtp.mdx), que descrevem as restrições de destinatários e volume. O Resend sem domínio verificado também só permite o destinatário autorizado da conta de teste. Para operar com clientes, configure um domínio remetente verificado; veja [RESEND_SETUP.md](RESEND_SETUP.md).

@@ -3,6 +3,7 @@ import { authStorage } from './auth-storage.mjs';
 import { publicAccessConfig, leaseDeadline, accessPayload, authLinkReason, authLinkMessage, savedAuthLinkReason } from './access-protocol.mjs';
 import { passwordPolicy, passwordError } from './password-policy.mjs';
 import {enhancePasswordInputs,concealPasswords,bindPasswordChecklist} from './password-fields';
+import {authRequestError} from './auth-request.mjs';
 export type AccessProfile = { id: string; email: string; display_name: string; role: 'user'|'master'; status: string; expires_at?: string };
 type Options = { lock: () => Promise<void>; unlock: (profile: AccessProfile) => Promise<void>; toast: (message: string) => void };
 type AuthPage = ''|'recuperar-senha'|'nova-senha'|'confirmar-email';
@@ -88,7 +89,7 @@ export function createAccess(options: Options) {
       if(signup){const error=passwordError(password,policy());if(error)throw new Error(error);}
       const result=signup?await client!.auth.signUp({email,password,options:{data:{display_name:input(form,'access-name').trim(),contact:input(form,'access-contact').trim()},emailRedirectTo:pageURL('confirmar-email')}}):await client!.auth.signInWithPassword({email,password});
       if(version!==uiVersion)return;
-      if(result.error)throw new Error(signup?(result.error.code==='weak_password'?serverPasswordError(result.error):'Não foi possível solicitar o cadastro. Confira os dados, os requisitos da senha e tente novamente.'):'Não foi possível entrar. Confira e-mail, senha e confirmação da conta.');
+      if(result.error)throw new Error(signup?authRequestError(result.error):'Não foi possível entrar. Confira e-mail, senha e confirmação da conta.');
       if(signup&&!result.data.session){await navigate('confirmar-email');return;}
       session=result.data.session;await check('start');
     });
@@ -97,14 +98,14 @@ export function createAccess(options: Options) {
       const result=await client!.auth.resetPasswordForEmail(rememberedEmail,{redirectTo:pageURL('nova-senha')});
       if(version!==uiVersion)return;
       // Never disclose account existence, including Auth's user-not-found response.
-      if(result.error&&result.error.code!=='user_not_found')throw new Error(result.error.status===429?'Muitas solicitações. Aguarde alguns minutos antes de reenviar.':'Não foi possível enviar o link. Confira a conexão e tente novamente.');
+      if(result.error&&result.error.code!=='user_not_found')throw new Error(authRequestError(result.error,'email'));
       screen.querySelector('#access-status')!.textContent=genericRecovery;(form.querySelector('button') as HTMLButtonElement).dataset.nextLabel='Reenviar link de recuperação';
     });
     void submit('resend-confirmation-form',async form=>{
       rememberedEmail=input(form,'confirmation-email').trim();
       const result=await client!.auth.resend({type:'signup',email:rememberedEmail,options:{emailRedirectTo:pageURL('confirmar-email')}});
       if(version!==uiVersion)return;
-      if(result.error&&result.error.code!=='user_not_found')throw new Error('Não foi possível reenviar agora. Aguarde alguns minutos e tente novamente.');
+      if(result.error&&result.error.code!=='user_not_found')throw new Error(authRequestError(result.error,'email'));
       screen.querySelector('#access-status')!.textContent='Se houver uma confirmação pendente para esse e-mail, enviaremos um novo link.';
     });
     void submit('recovery-form',async form=>{
