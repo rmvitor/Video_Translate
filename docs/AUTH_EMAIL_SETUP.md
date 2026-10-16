@@ -34,7 +34,19 @@ As variantes `/**` também cobrem parâmetros utilizados pelo fluxo PKCE do SDK.
 
 Essas páginas pertencem ao **GitHub Pages**. O Supabase verifica o token recebido e mantém a conta autenticada; os arquivos de treinamento continuam locais.
 
-## 2. Colar os dois modelos de e-mail
+## 2. Escolher o envio padrão ou os modelos personalizados
+
+### Sem SMTP próprio: usar os e-mails padrão
+
+Se o painel mostrar **“Set up custom SMTP to edit templates”**, os campos **Subject** e **Body** ficam bloqueados até habilitar SMTP próprio. Trocar de **Preview** para **Source** não remove esse bloqueio. Nesse caso, mantenha o conteúdo padrão: ele já inclui o link de verificação do Supabase. Não é necessário editar templates para testar recuperação e confirmação com as páginas do app.
+
+Configure as URLs da etapa 1 e mantenha **Confirm email** ativo na etapa 3. O app informa `/nova-senha/` ao pedir recuperação e `/confirmar-email/` ao cadastrar ou reenviar a confirmação. O botão do e-mail padrão passa pela verificação do Supabase e volta para a página correspondente com o código de autorização. Para o fluxo PKCE, abra esse botão no **mesmo navegador e perfil** em que solicitou o pedido. Um PWA em um navegador e o e-mail aberto em outro navegador/perfil podem não compartilhar o verificador.
+
+Se o e-mail ainda aponta para `localhost:3000`, confira Site URL e Redirect URLs e solicite um novo e-mail pelo app. Alterar configurações não reescreve mensagens já enviadas. Um botão contendo somente a URL de `/nova-senha/`, sem código, token ou sessão, não autoriza alterar a senha; a tela explica a ausência de sessão. O envio padrão tem limitações de destinatários e volume: o fato de chegar ao master não garante envio a todos os clientes.
+
+### Com SMTP próprio: personalizar os dois modelos
+
+Primeiro configure e salve o SMTP da etapa 4. Só depois substitua os templates abaixo. Sem domínio próprio, o Resend permite o teste restrito descrito em [RESEND_SETUP.md](RESEND_SETUP.md), não o envio livre aos clientes.
 
 Abra [Authentication → Email Templates](https://supabase.com/dashboard/project/ntlcwlpvwkvrojodmyze/auth/templates). Dependendo da versão do painel, os modelos aparecem em **Authentication → Emails**.
 
@@ -45,7 +57,7 @@ Abra [Authentication → Email Templates](https://supabase.com/dashboard/project
 
 Abra cada arquivo, copie seu conteúdo completo para o campo **Body / HTML** do modelo correspondente e salve. Mantenha `{{ .TokenHash }}` exatamente como está; o Supabase substitui esse marcador por um token de uso único em cada envio.
 
-Os botões já apontam para:
+Os botões dos arquivos preparados já apontam para:
 
 ```html
 <!-- Confirm signup -->
@@ -57,7 +69,13 @@ https://rmvitor.github.io/Video_Translate/nova-senha/?token_hash={{ .TokenHash }
 
 `&amp;` é a codificação correta dentro do atributo HTML `href`. Não substitua o token por uma chave de API, senha, e-mail ou um valor fixo. Não use apenas a URL da página como botão do e-mail: falta o token para validá-la.
 
-O app já usa `verifyOtp` para esses links, inclusive se o e-mail for aberto em outro navegador/dispositivo. Os modelos padrão com `{{ .ConfirmationURL }}` também são compatíveis, mas o fluxo PKCE precisa do navegador que solicitou o link. Use os modelos acima para esta configuração. Links já enviados continuam seguindo o template antigo; solicite um novo após salvar.
+O app já usa `verifyOtp` para esses links, inclusive se o e-mail for aberto em outro navegador/dispositivo. Os modelos padrão com `{{ .ConfirmationURL }}` também são compatíveis, com a exigência de navegador/perfil do PKCE descrita acima. Links já enviados continuam seguindo o template antigo; solicite um novo após salvar.
+
+### Entender uma falha sem expor o link
+
+O app diferencia a página aberta sem sessão, o verificador ausente no navegador, a recusa/expiração informada pelo Supabase e uma falha de conexão/serviço. Apenas a descrição da tela não prova que o prazo acabou. Na confirmação de e-mail, uma falha continua oferecendo reenvio; uma sessão já aberta não é usada para aprovar um callback inválido.
+
+Um link pode ser recusado por já ter sido utilizado, inclusive após uma verificação automática feita por um sistema de e-mail. Esse comportamento precisa ser confirmado nos logs do Auth; a presença de Outlook Safe Links, sozinha, não comprova consumo do token. Nunca compartilhe o link completo, `code`, tokens ou fragmentos de sessão ao pedir diagnóstico. Informe somente a mensagem exibida e o domínio/caminho de destino.
 
 ## 3. Conferir as regras de conta
 

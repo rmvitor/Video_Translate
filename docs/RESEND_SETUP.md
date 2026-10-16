@@ -25,7 +25,9 @@ No [projeto Supabase](https://supabase.com/dashboard/project/ntlcwlpvwkvrojodmyz
 | Username | `resend` |
 | Password | A chave de envio criada no Resend, inserida somente aqui. |
 
-Salve. A chave Resend não é a chave publishable do Supabase nem a chave Gemini. Não coloque a chave Resend no código, no GitHub Pages, em Edge Function pública ou no chat.
+Salve. No painel Supabase que mostra **“Set up custom SMTP to edit templates”**, essa configuração é o pré-requisito para liberar a edição dos modelos de confirmação e recuperação. Sem SMTP próprio, é possível testar com os modelos padrão e os redirecionamentos corretos, respeitando as limitações de envio do Supabase. Veja o caminho sem SMTP em [AUTH_EMAIL_SETUP.md](AUTH_EMAIL_SETUP.md).
+
+A chave Resend não é a chave publishable do Supabase nem a chave Gemini. Não coloque a chave Resend no código, no GitHub Pages, em Edge Function pública ou no chat.
 
 Confira os parâmetros no [guia oficial de SMTP do Resend](https://resend.com/docs/send-with-smtp). Use conexão segura, conforme a configuração do provedor.
 

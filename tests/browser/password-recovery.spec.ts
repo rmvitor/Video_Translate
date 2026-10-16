@@ -36,7 +36,7 @@ test('login accepts existing passwords and clears a revealed password after auth
  await page.locator('#auth-submit').click();await expect(page.locator('#app')).toBeVisible();await expect(page.locator('#access-password')).toHaveValue('');await expect(page.locator('#access-password')).toHaveAttribute('type','password');await expect(page.locator('[data-password-toggle="access-password"]')).toHaveAttribute('aria-pressed','false');
 });
 
-test('recovery link crosses tabs with PKCE, saves the confirmed password and requires login with the new password',async({page,context})=>{
+test('default recovery email redirects through verification and PKCE across tabs, saves the password and requires login',async({page,context})=>{
   const fixture=await mockAccess(context,{session:false});let saved='',redirect='';const updates:any[]=[];
   await context.route('**/auth/v1/recover*',route=>{const body=route.request().postDataJSON();expect(body.email).toBe('fixture@example.test');expect(body.code_challenge).toBeTruthy();expect(body.code_challenge_method).toBe('s256');redirect=new URL(route.request().url()).searchParams.get('redirect_to')!;return route.fulfill({contentType:'application/json',body:'{}'});});
   await context.route('**/auth/v1/user',route=>{if(route.request().method()==='PUT'){saved=route.request().postDataJSON().password;updates.push(saved);}return route.fulfill({contentType:'application/json',body:JSON.stringify(fixture.session.user)});});
@@ -48,7 +48,9 @@ test('recovery link crosses tabs with PKCE, saves the confirmed password and req
   await page.goto('./');await page.locator('#access-email').fill('fixture@example.test');await page.getByRole('link',{name:'Esqueci minha senha'}).click();await expect(page).toHaveURL(/\/recuperar-senha\/$/);
   await expect(page.locator('#reset-email')).toHaveValue('fixture@example.test');await page.locator('#send-recovery').click();await expect(page.locator('#access-status')).toContainText('Se houver uma conta');await expect(page.locator('#send-recovery')).toHaveText('Reenviar link de recuperação');
   expect(new URL(redirect).pathname).toBe('/Video_Translate/nova-senha/');
-  const callback=new URL(redirect);callback.searchParams.set('code','fixture-code');const next=await context.newPage();await next.goto(callback.href);await expect(next.locator('#recovery-form')).toBeVisible();await expect(next.locator('#app')).not.toBeVisible();
+  const callback=new URL(redirect);callback.searchParams.set('code','fixture-code');let clicked=false;
+  await context.route('**/auth/v1/verify?**',route=>{clicked=true;expect(new URL(route.request().url()).searchParams.get('type')).toBe('recovery');return route.fulfill({status:302,headers:{location:callback.href},body:''});});
+  const next=await context.newPage();await next.goto('http://127.0.0.1:4173/auth/v1/verify?token=fixture-email-token&type=recovery');expect(clicked).toBe(true);await expect(next.locator('#recovery-form')).toBeVisible();await expect(next.locator('#app')).not.toBeVisible();
   await expect(next).toHaveURL(/\/nova-senha\/$/);expect(fixture.calls.some(call=>call.path.endsWith('/access-control'))).toBe(false);
   await next.locator('#recovery-password').fill(password);await next.locator('[data-password-toggle="recovery-password"]').click();await expect(next.locator('#recovery-password')).toHaveAttribute('type','text');expect(updates).toHaveLength(0);
   await next.locator('#recovery-confirmation').fill('OutraSenha123!');await next.locator('[data-password-toggle="recovery-confirmation"]').click();await expect(next.locator('#recovery-confirmation')).toHaveAttribute('type','text');await next.locator('#save-password').click();await expect(next.locator('#auth-error')).toContainText('não coincidem');expect(updates).toHaveLength(0);
@@ -62,8 +64,9 @@ test('recovery link crosses tabs with PKCE, saves the confirmed password and req
 
 test('public routes survive direct loading; expired links, missing PKCE and absent sessions cannot save a password',async({page,context})=>{
   const fixture=await mockAccess(context,{session:false});
-  await page.goto('./nova-senha/');await expect(page.locator('#invalid-auth-link')).toBeVisible();await expect(page.locator('#recovery-form')).toHaveCount(0);await expect(page.locator('#app')).not.toBeVisible();
-  await page.goto('./nova-senha/?code=missing-verifier');await expect(page.locator('#invalid-auth-link')).toBeVisible();await expect(page.locator('#recovery-form')).toHaveCount(0);
+  await page.goto('./nova-senha/');await expect(page.locator('#invalid-auth-link')).toContainText('sem uma sessão de recuperação');await expect(page.locator('#invalid-auth-link')).not.toContainText('expirou');await expect(page.locator('#recovery-form')).toHaveCount(0);await expect(page.locator('#app')).not.toBeVisible();
+  await page.goto('./nova-senha/?code=missing-verifier');await expect(page.locator('#invalid-auth-link')).toContainText('mesmo navegador e perfil');await expect(page.locator('#invalid-auth-link')).not.toContainText('expirou');await expect(page.locator('#recovery-form')).toHaveCount(0);
+  await expect(page).toHaveURL(/\?link=browser$/);await page.reload();await expect(page.locator('#invalid-auth-link')).toContainText('mesmo navegador e perfil');
   await page.goto('./nova-senha/#error=access_denied&error_code=otp_expired&error_description=private-details');await expect(page.locator('#invalid-auth-link')).toContainText('expirou');await expect(page.locator('#access-screen')).not.toContainText('private-details');
   await page.getByRole('link',{name:'Solicitar novo link'}).click();await page.reload();await expect(page.locator('#reset-request-form')).toBeVisible();expect(fixture.calls.some(call=>call.path.endsWith('/user')&&call.method==='PUT')).toBe(false);
   expect(await page.evaluate(()=>document.baseURI)).toBe('http://127.0.0.1:4173/Video_Translate/');
@@ -85,14 +88,16 @@ test('recovery resend hides account existence and handles throttling without dup
   mode='success';await page.locator('#send-recovery').click();await expect.poll(()=>requests).toBe(3);await expect(page.locator('#access-status')).toContainText('Se houver uma conta');
 });
 
-test('signup displays configured password requirements and confirmation callback keeps master approval',async({page,context})=>{
+test('default signup email verifies its redirect with PKCE and still requires master approval',async({page,context})=>{
   const fixture=await mockAccess(context,{session:false,status:'pending'});let redirect='';
   await context.route('**/access-config.json',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({url:'http://127.0.0.1:4173',publishableKey:'sb_publishable_fixture',passwordPolicy:{minimumLength:12,requiredCharacters:'lower_upper_letters_digits_symbols'}})}));
   await context.route('**/auth/v1/signup*',route=>{redirect=new URL(route.request().url()).searchParams.get('redirect_to')!;expect(route.request().postDataJSON().password).toBe(password);return route.fulfill({contentType:'application/json',body:JSON.stringify({user:fixture.session.user,session:null})});});
   await page.goto('./');await page.locator('#toggle-signup').click();await expect(page.locator('#signup-requirements')).toContainText('12 caracteres');await expect(page.locator('#signup-requirements')).toContainText('maiúscula');await expect(page.locator('#signup-requirements')).toContainText('símbolo');
   await page.locator('#access-email').fill('fixture@example.test');await page.locator('#access-name').fill('Teste');await page.locator('#access-contact').fill('11999990000');await page.locator('#access-password').fill('somenteletras');await page.locator('#auth-submit').click();await expect(page.locator('#auth-error')).toContainText('letras e números');
   await page.locator('#access-password').fill(password);await page.locator('#auth-submit').click();await expect(page).toHaveURL(/\/confirmar-email\/$/);await expect(page.locator('#resend-confirmation-form')).toBeVisible();await page.locator('#resend-confirmation').click();await expect(page.locator('#access-status')).toContainText('confirmação pendente');
-  expect(new URL(redirect).pathname).toBe('/Video_Translate/confirmar-email/');const callback=new URL(redirect);callback.searchParams.set('code','confirmation-code');const next=await context.newPage();await next.goto(callback.href);await expect(next.getByRole('heading',{name:'E-mail confirmado'})).toBeVisible();await expect(next.locator('#app')).not.toBeVisible();
+  expect(new URL(redirect).pathname).toBe('/Video_Translate/confirmar-email/');const callback=new URL(redirect);callback.searchParams.set('code','confirmation-code');let clicked=false;
+  await context.route('**/auth/v1/verify?**',route=>{clicked=true;expect(new URL(route.request().url()).searchParams.get('type')).toBe('signup');return route.fulfill({status:302,headers:{location:callback.href},body:''});});
+  const next=await context.newPage();await next.goto('http://127.0.0.1:4173/auth/v1/verify?token=signup-email-token&type=signup');expect(clicked).toBe(true);await expect(next.getByRole('heading',{name:'E-mail confirmado'})).toBeVisible();await expect(next.locator('#app')).not.toBeVisible();
   await next.getByRole('link',{name:'Continuar',exact:true}).click();await expect(next.locator('#access-reason')).toContainText('aprovação');await expect(next.locator('#app')).not.toBeVisible();
 });
 
@@ -119,5 +124,22 @@ test('the signup email template verifies its token and still requires master app
 test('an expired email-template token cannot use an unrelated signed-in session',async({page,context})=>{
  await mockAccess(context);
  await context.route('**/auth/v1/verify',route=>route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({error_code:'otp_expired',msg:'Email link is invalid or has expired'})}));
- await page.goto(emailAction('confirm-signup.html','expired-fixture-hash'));await expect(page.locator('#resend-confirmation-form')).toBeVisible();await expect(page.locator('#access-screen')).toContainText('inválido ou expirou');await expect(page.locator('#app')).not.toBeVisible();expect(new URL(page.url()).searchParams.has('token_hash')).toBe(false);
+ await page.goto(emailAction('confirm-signup.html','expired-fixture-hash'));await expect(page.locator('#resend-confirmation-form')).toBeVisible();await expect(page.locator('#access-screen')).toContainText('expirou ou já foi utilizado');await expect(page.locator('#app')).not.toBeVisible();expect(new URL(page.url()).searchParams.has('token_hash')).toBe(false);
+});
+
+test('confirmation without this browser verifier explains the issue and cannot use an unrelated session',async({page,context})=>{
+ const fixture=await mockAccess(context);await page.goto('./confirmar-email/?code=missing-verifier');
+ await expect(page.locator('#resend-confirmation-form')).toBeVisible();await expect(page.locator('#access-screen')).toContainText('mesmo navegador e perfil');await expect(page.locator('#app')).not.toBeVisible();
+ await expect(page).toHaveURL(/\?link=browser$/);await page.reload();await expect(page.locator('#access-screen')).toContainText('mesmo navegador e perfil');await expect(page.locator('#app')).not.toBeVisible();
+ expect(fixture.calls.some(call=>call.path.endsWith('/access-control'))).toBe(false);
+});
+
+test('callback service failures are distinguished from expiry and never show server descriptions or tokens',async({page,context})=>{
+ await mockAccess(context,{session:false});
+ await context.route('**/auth/v1/verify',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'unexpected_failure',message:'Private provider diagnostic'})}));
+ await page.goto(emailAction('reset-password.html','private-fixture-hash'));await expect(page.locator('#invalid-auth-link')).toContainText('Confira a conexão');await expect(page).toHaveURL(/\?link=unavailable$/);
+ await expect(page.locator('#recovery-form')).toHaveCount(0);await expect(page.locator('#access-screen')).not.toContainText('Private provider diagnostic');
+ await page.reload();await expect(page.locator('#invalid-auth-link')).toContainText('Confira a conexão');
+ await page.goto('./nova-senha/?error=access_denied&error_code=otp_expired&error_description=private-expiry-detail');await expect(page.locator('#invalid-auth-link')).toContainText('expirou ou já foi utilizado');await expect(page).toHaveURL(/\?link=expired$/);
+ await expect(page.locator('#access-screen')).not.toContainText('private-expiry-detail');
 });

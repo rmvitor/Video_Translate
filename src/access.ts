@@ -1,14 +1,13 @@
 import { createClient, type Session, type SupabaseClient, type AuthError } from '@supabase/supabase-js';
 import { authStorage } from './auth-storage.mjs';
-import { publicAccessConfig, leaseDeadline, accessPayload } from './access-protocol.mjs';
+import { publicAccessConfig, leaseDeadline, accessPayload, authLinkReason, authLinkMessage, savedAuthLinkReason } from './access-protocol.mjs';
 import { passwordPolicy, passwordError } from './password-policy.mjs';
 import {enhancePasswordInputs,concealPasswords,bindPasswordChecklist} from './password-fields';
 export type AccessProfile = { id: string; email: string; display_name: string; role: 'user'|'master'; status: string; expires_at?: string };
 type Options = { lock: () => Promise<void>; unlock: (profile: AccessProfile) => Promise<void>; toast: (message: string) => void };
 type AuthPage = ''|'recuperar-senha'|'nova-senha'|'confirmar-email';
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]!);
-const genericRecovery='Se houver uma conta com esse e-mail, você receberá as instruções de recuperação. Confira também o spam.';
-const invalidLink='O link é inválido ou expirou. Solicite um novo link e abra-o no mesmo navegador em que fez a solicitação.';
+const genericRecovery='Se houver uma conta com esse e-mail, você receberá as instruções de recuperação. Confira também o spam. Abra o botão do e-mail neste mesmo navegador e perfil, onde o pedido foi feito.';
 export function createAccess(options: Options) {
   const shell = document.querySelector<HTMLElement>('#app')!;
   const screen = document.createElement('section'); screen.id='access-screen'; shell.before(screen);
@@ -17,15 +16,16 @@ export function createAccess(options: Options) {
   const currentPage=():AuthPage=>['recuperar-senha','nova-senha','confirmar-email'].find(page=>location.pathname.replace(/\/$/,'').endsWith('/'+page)) as AuthPage||'';
   let page=currentPage(),client: SupabaseClient | undefined, config: ReturnType<typeof publicAccessConfig>, session: Session|null=null, profile: AccessProfile|undefined;
   let granted=false, deadline=0, checking=false, generation=0, recovery=false, signingOut=false,initializing=true,authBusy=false,callbackFailure=false;
+  let callbackReason='missing';
   let rememberedEmail='',confirmationComplete=false,uiVersion=0;
   let heartbeat: ReturnType<typeof setInterval>|undefined, watchdog: ReturnType<typeof setInterval>|undefined;
   let transition=Promise.resolve();
   shell.hidden=true; shell.inert=true;
   const policy=()=>config?.passwordPolicy||passwordPolicy();
   const requirements=(id:string)=>`<ul class="password-requirements" id="${id}" aria-label="Requisitos da senha"></ul><p class="password-help">Use uma senha exclusiva. Senhas conhecidas como expostas podem ser recusadas.</p>`;
-  function cleanCallback(){history.replaceState({},'',pageURL(page)+(callbackFailure?'?link=invalido':''));}
+  function cleanCallback(){history.replaceState({},'',pageURL(page)+(callbackFailure?'?link='+savedAuthLinkReason(callbackReason):''));}
   async function navigate(next:AuthPage,message=''){
-    page=next;callbackFailure=false;confirmationComplete=false;history.pushState({},'',pageURL(page));
+    page=next;callbackFailure=false;callbackReason='missing';confirmationComplete=false;history.pushState({},'',pageURL(page));
     if(next)await lock(message);else if(session)await check('start');else show(message);
   }
   function serverPasswordError(error:AuthError){
@@ -45,11 +45,11 @@ export function createAccess(options: Options) {
       heading='Recuperar senha';content=`<p>Informe seu e-mail para receber um link de recuperação.</p><form id="reset-request-form">${field('E-mail','reset-email','email','email')}<button class="button primary" id="send-recovery">Enviar link de recuperação</button><p id="auth-error" role="alert"></p></form><a class="text-button" data-auth-page="" href="${pageURL('')}">Voltar ao login</a>`;
     }else if(page==='nova-senha'||recovery){
       heading=recovery?'Defina uma nova senha':'Alterar senha';
-      content=session&&!callbackFailure?`<form id="recovery-form">${field('Nova senha','recovery-password')}${field('Confirme a nova senha','recovery-confirmation')}${requirements('recovery-requirements')}<button class="button primary" id="save-password">Salvar nova senha</button><p id="auth-error" role="alert"></p></form><div class="inline-actions"><a class="text-button" data-auth-page="recuperar-senha" href="${pageURL('recuperar-senha')}">Solicitar outro link</a><a class="text-button" data-auth-page="" href="${pageURL('')}">Voltar ao login</a></div>`:`<p id="invalid-auth-link" role="alert">${invalidLink}</p><div class="inline-actions"><a class="button primary" data-auth-page="recuperar-senha" href="${pageURL('recuperar-senha')}">Solicitar novo link</a><a class="text-button" data-auth-page="" href="${pageURL('')}">Voltar ao login</a></div>`;
+      content=session&&!callbackFailure?`<form id="recovery-form">${field('Nova senha','recovery-password')}${field('Confirme a nova senha','recovery-confirmation')}${requirements('recovery-requirements')}<button class="button primary" id="save-password">Salvar nova senha</button><p id="auth-error" role="alert"></p></form><div class="inline-actions"><a class="text-button" data-auth-page="recuperar-senha" href="${pageURL('recuperar-senha')}">Solicitar outro link</a><a class="text-button" data-auth-page="" href="${pageURL('')}">Voltar ao login</a></div>`:`<p id="invalid-auth-link" role="alert">${authLinkMessage(callbackFailure?callbackReason:'missing')}</p><div class="inline-actions"><a class="button primary" data-auth-page="recuperar-senha" href="${pageURL('recuperar-senha')}">Solicitar novo link</a><a class="text-button" data-auth-page="" href="${pageURL('')}">Voltar ao login</a></div>`;
     }else if(page==='confirmar-email'){
       heading=confirmationComplete?'E-mail confirmado':'Confirme seu e-mail';
-      content=confirmationComplete?`<p>Seu e-mail foi confirmado. O acesso à ferramenta depende da aprovação do master.</p><a class="button primary" data-auth-page="" href="${pageURL('')}">Continuar</a>`:`${callbackFailure?`<p role="alert">O link de confirmação é inválido ou expirou. Solicite outro e-mail abaixo.</p>`:'<p>Confira a caixa de entrada e o spam para confirmar sua conta. Depois, aguarde a aprovação do master.</p>'}<form id="resend-confirmation-form">${field('E-mail','confirmation-email','email','email')}<button class="button primary" id="resend-confirmation">Reenviar confirmação</button><p id="auth-error" role="alert"></p></form><a class="text-button" data-auth-page="" href="${pageURL('')}">Voltar ao login</a>`;
-    }else if(callbackFailure){heading='Link inválido';content=`<p id="invalid-auth-link" role="alert">${invalidLink}</p><a class="button primary" data-auth-page="recuperar-senha" href="${pageURL('recuperar-senha')}">Solicitar novo link</a>`;}
+      content=confirmationComplete?`<p>Seu e-mail foi confirmado. O acesso à ferramenta depende da aprovação do master.</p><a class="button primary" data-auth-page="" href="${pageURL('')}">Continuar</a>`:`${callbackFailure?`<p role="alert">${authLinkMessage(callbackReason)}</p>`:'<p>Confira a caixa de entrada e o spam. Use o botão do e-mail no mesmo navegador e perfil em que solicitou o cadastro. Depois da confirmação, aguarde a aprovação do master.</p>'}<form id="resend-confirmation-form">${field('E-mail','confirmation-email','email','email')}<button class="button primary" id="resend-confirmation">Reenviar confirmação</button><p id="auth-error" role="alert"></p></form><a class="text-button" data-auth-page="" href="${pageURL('')}">Voltar ao login</a>`;
+    }else if(callbackFailure){heading='Não foi possível validar o link';content=`<p id="invalid-auth-link" role="alert">${authLinkMessage(callbackFailure?callbackReason:'missing')}</p><a class="button primary" data-auth-page="recuperar-senha" href="${pageURL('recuperar-senha')}">Solicitar novo link</a>`;}
     else if(session){heading='Sua conta';content=`<strong>${esc(session.user.email)}</strong><p id="access-reason">${esc(message)}</p><div class="inline-actions"><button class="button primary" id="retry-access">Verificar acesso novamente</button><button class="button secondary" id="gate-signout">Sair da conta</button></div>`;}
     else content=`<form id="signin-form">${field('E-mail','access-email','email','username')}<label class="field-label">Senha<input id="access-password" type="password" autocomplete="current-password" minlength="1" required aria-describedby="signup-requirements" /></label><div id="signup-password-help" hidden>${requirements('signup-requirements')}</div><label class="field-label" id="signup-name-field" hidden>Nome<input id="access-name" maxlength="120" autocomplete="name" /></label><label class="field-label" id="signup-contact-field" hidden>Contato (telefone ou WhatsApp)<input id="access-contact" type="tel" maxlength="120" autocomplete="tel" /></label><button class="button primary" id="auth-submit">Entrar</button><p id="auth-error" role="alert"></p></form><div class="inline-actions"><button class="text-button" id="toggle-signup">Solicitar acesso</button><a class="text-button" id="forgot-password" data-auth-page="recuperar-senha" href="${pageURL('recuperar-senha')}">Esqueci minha senha</a></div>`;
     screen.innerHTML=`<div class="access-card"><a class="access-brand" data-auth-page="" href="${pageURL('')}">entrelinhas<span>.</span></a><h1>${heading}</h1>${content}<p class="access-status" id="access-status" role="status" aria-live="polite">${!session||page?esc(message):''}</p></div>`;
@@ -112,7 +112,7 @@ export function createAccess(options: Options) {
       if(error)throw new Error(error);if(password!==confirmation)throw new Error('As senhas não coincidem. Confira a confirmação.');
       const current=await client!.auth.getSession(),verified=await client!.auth.getUser();
       if(version!==uiVersion)return;
-      if(callbackFailure||current.error||!current.data.session||verified.error||verified.data.user?.id!==current.data.session.user.id){callbackFailure=true;cleanCallback();show();return;}
+      if(callbackFailure||current.error||!current.data.session||verified.error||verified.data.user?.id!==current.data.session.user.id){if(!callbackFailure)callbackReason=verified.error&&authLinkReason(verified.error)==='unavailable'?'unavailable':'session';callbackFailure=true;cleanCallback();show();return;}
       const result=await client!.auth.updateUser({password});
       if(version!==uiVersion)return;
       if(result.error)throw new Error(serverPasswordError(result.error));
@@ -160,7 +160,9 @@ export function createAccess(options: Options) {
     show('Verificando configuração…',true);
     const params=new URLSearchParams(location.search),hash=new URLSearchParams(location.hash.slice(1));
     const callbackType=params.get('type')||hash.get('type'),code=params.get('code'),tokenHash=params.get('token_hash');
-    const callback=Boolean(code||tokenHash||hash.get('access_token')||params.get('error')||hash.get('error')||params.get('link')==='invalido');
+    const urlError=params.get('error_code')||hash.get('error_code')||params.get('error')||hash.get('error');
+    const savedFailure=params.has('link');
+    const callback=Boolean(code||tokenHash||hash.get('access_token')||urlError||savedFailure);
     if(callbackType==='invite'||callbackType==='recovery'){recovery=true;page='nova-senha';}
     try{
       const response=await fetch(new URL('access-config.json',baseURL),{cache:'no-cache'});config=publicAccessConfig(await response.json());
@@ -174,16 +176,17 @@ export function createAccess(options: Options) {
         if(value){session=value;if(page==='nova-senha'&&screen.querySelector('#recovery-form'))return;if(!initializing&&!authBusy)queueMicrotask(()=>{if(recovery){cleanCallback();void lock('Defina sua nova senha.');}else if(page)show();else void check('start');});}
       });
       const initialized=await client.auth.initialize();
-      callbackFailure=Boolean(initialized.error||params.get('error')||hash.get('error')||params.get('link')==='invalido');
+      callbackFailure=Boolean(initialized.error||urlError||savedFailure);
+      if(callbackFailure)callbackReason=urlError?authLinkReason({code:urlError}):initialized.error?authLinkReason(initialized.error):savedAuthLinkReason(params.get('link'));
       if(tokenHash&&!callbackFailure){
-        if(callbackType!=='recovery'&&callbackType!=='signup'&&callbackType!=='invite'&&callbackType!=='email')callbackFailure=true;
-        else{const verified=await client.auth.verifyOtp({token_hash:tokenHash,type:callbackType});callbackFailure=Boolean(verified.error);session=verified.data.session;}
+        if(callbackType!=='recovery'&&callbackType!=='signup'&&callbackType!=='invite'&&callbackType!=='email'){callbackFailure=true;callbackReason='invalid';}
+        else{const verified=await client.auth.verifyOtp({token_hash:tokenHash,type:callbackType});callbackFailure=Boolean(verified.error);if(verified.error)callbackReason=authLinkReason(verified.error);session=verified.data.session;}
       }
       // Without this browser's PKCE verifier a code must never fall back to an
       // unrelated existing session. The SDK leaves unmatched codes in the URL.
-      if(code&&new URLSearchParams(location.search).has('code'))callbackFailure=true;
+      if(code&&new URLSearchParams(location.search).has('code')&&!callbackFailure){callbackFailure=true;callbackReason='browser';}
       const current=await client.auth.getSession();session=current.data.session;
-      if(callback&&!session)callbackFailure=true;
+      if(callback&&!session&&!callbackFailure){callbackFailure=true;callbackReason='missing';}
       if(recovery)page='nova-senha';
       if(page==='confirmar-email'&&callback&&!callbackFailure&&session)confirmationComplete=true;
       if(callback)cleanCallback();initializing=false;
@@ -192,7 +195,7 @@ export function createAccess(options: Options) {
       watchdog=setInterval(()=>{if(granted&&performance.now()>=deadline)void lock('A autorização venceu. Conecte-se e verifique o acesso novamente.');},1000);
       document.addEventListener('visibilitychange',()=>{if(!document.hidden&&session&&!page)void check(granted?'heartbeat':'start');});
       window.addEventListener('online',()=>{if(session&&!page)void check(granted?'heartbeat':'start');});
-      window.addEventListener('popstate',()=>{if(authBusy)return;page=currentPage();recovery=false;callbackFailure=false;if(page)void lock('');else if(session)void check('start');else show();});
+      window.addEventListener('popstate',()=>{if(authBusy)return;page=currentPage();recovery=false;callbackFailure=false;callbackReason='missing';if(page)void lock('');else if(session)void check('start');else show();});
     }catch{initializing=false;show('Não foi possível carregar o acesso. Confira a conexão e recarregue a página.',true);}
   }
   document.addEventListener('click',event=>{if((event.target as Element).closest('#change-account-password')&&granted)void navigate('nova-senha');});
