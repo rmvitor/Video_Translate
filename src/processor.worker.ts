@@ -3,6 +3,7 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import type { Segment, WorkerEvent } from './types';
 import { LANGUAGES } from './preferences.mjs';
 import { normalizeTranscript, transcriptionModel } from './transcription.mjs';
+import { translateText, translationModel, TRANSLATION_INPUT_TOKENS, TRANSLATION_OUTPUT_TOKENS } from './translation.mjs';
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
@@ -13,13 +14,15 @@ env.backends.onnx.wasm!.wasmPaths = new URL(`${import.meta.env.BASE_URL}runtime/
 type SpeechOutput = { text: string; chunks?: { text: string; timestamp: [number | null, number | null] }[] };
 type Transcriber = (audio: Float32Array, options: Record<string, unknown>) => Promise<SpeechOutput | SpeechOutput[]>;
 type Translator = ((text: string, options: Record<string, unknown>) => Promise<{ translation_text: string }[]>) & {
-  tokenizer: { model: { vocab: string[] } };
+  tokenizer: { model: { vocab: string[] }; model_max_length?: number; encode(text: string): number[] };
+  dispose(): Promise<void>;
 };
 // Narrow the library's very large conditional type to the two single-input pipelines we use.
 const createPipeline = pipeline as unknown as (task: string, model: string, options: Record<string, unknown>) => Promise<unknown>;
 let transcriber: Transcriber | undefined;
 let speechModel='';
 let translator: Translator | undefined;
+let loadedTranslationModel = '';
 
 const send = (message: WorkerEvent) => self.postMessage(message);
 function status(stage: 'audio' | 'models' | 'transcribe' | 'translate', message: string, progress?: number) {
@@ -55,21 +58,27 @@ async function audioFromVideo(file: File, baseURL: string): Promise<Float32Array
 async function translateUnits(units: { id: string; text: string }[], onResult?: (id: string, translated: string) => void, sourceLanguage = 'en') {
   if (sourceLanguage === 'pt') { for (const unit of units) onResult?.(unit.id, unit.text); return units.map(unit => unit.text); }
   status('models', 'Preparando o modelo de tradução para português…');
-  translator ??= await createPipeline('translation', sourceLanguage === 'en' ? 'Xenova/opus-mt-en-ROMANCE' : 'Xenova/m2m100_418M', {
+  const model = translationModel(sourceLanguage);
+  if (loadedTranslationModel !== model && translator) { await translator.dispose(); translator = undefined; }
+  translator ??= await createPipeline('translation', model, {
     device: 'wasm', dtype: 'q8', progress_callback: downloading('Tradução'),
   }) as Translator;
+  loadedTranslationModel = model;
   const target = sourceLanguage === 'en' ? ['>>pt_br<<', '>>pt<<', '>>por<<'].find(token => translator!.tokenizer.model.vocab.includes(token)) : 'pt';
   if (!target) throw new Error('O modelo de tradução não contém um idioma português suportado.');
+  const prefix = sourceLanguage === 'en' ? target + ' ' : '';
+  const countTokens = (text: string) => translator!.tokenizer.encode(prefix + text).length;
+  const maxTokens = Math.min(TRANSLATION_INPUT_TOKENS, (translator.tokenizer.model_max_length || 512) - 8);
   const output: string[] = [];
   for (const [index, unit] of units.entries()) {
     status('translate', `Traduzindo trecho ${index + 1} de ${units.length}…`, index / units.length * 100);
-    const words = unit.text.split(/\s+/);
-    const pieces: string[] = [];
-    for (let start = 0; start < words.length; start += 80) {
-      const result = await translator(`${sourceLanguage === 'en' ? target + ' ' : ''}${words.slice(start, start + 80).join(' ')}`, { max_new_tokens: 256, ...(sourceLanguage !== 'en' ? { src_lang: sourceLanguage, tgt_lang: 'pt' } : {}) });
-      pieces.push(result[0].translation_text.trim());
-    }
-    const translated = pieces.join(' ');
+    const translated = await translateText(unit.text, {
+      source: sourceLanguage, countTokens, maxTokens,
+      translate: async (text: string) => {
+        const result = await translator!(prefix + text, { max_new_tokens: TRANSLATION_OUTPUT_TOKENS, do_sample: false, ...(sourceLanguage !== 'en' ? { src_lang: sourceLanguage, tgt_lang: 'pt' } : {}) });
+        return result[0]?.translation_text || '';
+      },
+    });
     output.push(translated);
     onResult?.(unit.id, translated);
   }

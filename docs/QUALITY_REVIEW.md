@@ -28,10 +28,22 @@ A amostra é pequena e selecionada para revelar riscos. Ela não mede a frequên
 ## Limitações observadas na arquitetura
 
 - Inglês usa Marian/OPUS en-ROMANCE; outros idiomas usam `Xenova/m2m100_418M`. O destino seleciona o primeiro token português disponível, sem garantia de vocabulário exclusivamente brasileiro.
-- Cada legenda/bloco é traduzido separadamente, dividido em até 80 palavras por chamada, com até 256 novos tokens. Não há contexto do curso, glossário do projeto ou conferência semântica de omissões, números e condições.
+- Na avaliação inicial, cada legenda/bloco era traduzido em partes de até 80 palavras e com até 256 novos tokens, incluindo várias frases na mesma chamada. A versão 0.8.5 passa a isolar frases e a respeitar o tamanho real em tokens, conforme a correção descrita abaixo. Ainda não há contexto do curso, glossário do projeto ou conferência semântica de omissões, números e condições.
 - Melhorar Whisper Base/Small melhora o texto de entrada, mas não corrige erros próprios da tradução. Rever nomes técnicos na transcrição antes de traduzir continua necessário.
 - Os termos em inglês configurados na narração controlam **pronúncia**; não constituem um glossário para o tradutor.
 - PDF escaneado e texto embutido em imagens ainda não têm OCR. Uma página pode preservar a imagem sem traduzir seu texto.
+
+## Correção de omissão de frases na versão 0.8.5
+
+Foi reproduzido localmente um caso em que uma legenda continha duas frases completas e o Marian omitia inteiramente a primeira ao traduzir as duas juntas. A frase inicial isolada era traduzida corretamente. A instrução estava no texto reconhecido: neste caso, melhorar o Whisper não corrigiria a falha, pois a perda acontecia depois, na geração da tradução. O trecho tinha menos de 80 palavras; não era um corte causado pelo tamanho do bloco. O comportamento foi reproduzido com o modelo q8 no worker real do navegador, com zero downloads e sem enviar o texto a um serviço online. O material privado usado na investigação não foi adicionado ao repositório.
+
+O novo processamento traduz uma frase por chamada e reúne os resultados dentro da legenda/bloco original. A instrução inicial do caso reportado passou a aparecer como **“Finalmente, selecione o formato negativo desejado.”**, seguida da segunda frase. Nenhum tempo ou texto original precisa ser reescrito. Abreviações comuns, valores decimais e fragmentos finais são preservados na divisão.
+
+Há também um limite conservador de 160 tokens de entrada por chamada, medido pelo tokenizer do próprio modelo, e até 384 novos tokens de saída. Entradas maiores são subdivididas por palavras ou, quando necessário, por caracteres Unicode completos, sem ignorar a parte final. Há uma margem adicional em relação ao máximo aceito pelo tokenizer. Uma resposta vazia é tratada como erro; uma saída próxima do limite é descartada e refeita em partes menores, com tentativas limitadas. Esses controles identificam riscos de truncamento, não todas as omissões de sentido.
+
+Os testes unitários cobrem divisão, cobertura dos textos, abreviações, decimais, Unicode, falhas vazias e limites de geração. `npm run test:translation`, com o build e servidor de testes ativos, exercita o worker real em vídeo e blocos de página com instruções genéricas públicas. Verifica a instrução inicial, a ordem de ações, uma negação, instruções repetidas em bloco longo, os tempos/textos originais e uma nova execução offline. `AI_TEST_PROFILE` pode reutilizar somente um perfil dedicado a testes. Esse teste não valida contas reais nem a qualidade de todos os termos de um curso.
+
+Traduções existentes não são migradas automaticamente. No vídeo, **Traduzir transcrição em PT-BR** refaz a tradução do texto atual, substituindo também eventuais edições manuais; exporte uma cópia caso queira preservá-las. Em PDFs, a correção é usada ao traduzir os textos pendentes. A avaliação anterior continua válida como evidência das limitações do modelo: isolar frases reduz a omissão entre elas, mas não resolve por si só erros de terminologia, números ou condições dentro de uma frase.
 
 ## Melhorias recomendadas, em ordem
 
