@@ -1,6 +1,6 @@
 {
   "name": "video-translate",
-  "version": "0.8.7",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,6 +14,7 @@
     "test:translation": "node scripts/validate-translation.mjs",
     "test:pdf": "node scripts/validate-pdf.mjs",
     "test:voice": "node scripts/validate-voice.mjs",
+    "test:video-export": "node scripts/validate-video-export.mjs",
     "test:access-edge": "DENO_TLS_CA_STORE=system npx --yes --package=deno@2.6.4 deno test --node-modules-dir=manual --allow-env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,ACCESS_ALLOWED_ORIGINS tests/access-control-edge.test.ts",
     "test:access-db": "node scripts/test-access-db.mjs"
   },

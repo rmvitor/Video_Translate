@@ -5,6 +5,7 @@ export type ReadingItem = {id:string;text:string;original?:string;sourceLanguage
 export type NarrationLanguage='mixed'|'pt-BR'|'en-US';
 const NEURAL_VOICE={voiceURI:'entrelinhas:piper:faber',name:'Natural local',lang:'pt-BR',localService:true,default:true};
 type Prepared={audio?:ArrayBuffer;duration?:number;marks?:{id:string;start:number}[]};
+export type VideoVoiceAudio={blob:Blob;duration:number;marks:{id:string;start:number}[]};
 export class LocalNarrator {
   state:'idle'|'reading'|'paused'='idle';
   private chosenVoice='';
@@ -24,6 +25,7 @@ export class LocalNarrator {
   private utterances:SpeechSynthesisUtterance[]=[];
   private seconds=0;
   private audioMarks:{id:string;start:number}[]=[];
+  private preparedVideo?:{key:string;value:VideoVoiceAudio};
   ready=false;
   preparing=false;
   get duration(){return this.seconds;}
@@ -57,10 +59,27 @@ export class LocalNarrator {
     if(this.requests.size){this.neuralWorker?.terminate();this.neuralWorker=undefined;for(const request of this.requests.values())request.reject(new Error('Narração cancelada.'));this.requests.clear();}
     this.onFailure=undefined;this.playbackError=undefined;this.state='idle';this.preparing=false;if(active)this.status='Narração interrompida.';this.notify();
   }
+  dispose(){this.stop();this.neuralWorker?.terminate();this.neuralWorker=undefined;}
   pause(){if(this.state==='reading'){clearTimeout(this.watchdog);this.audio?.pause();if(this.utterances.length)speechSynthesis.pause();this.state='paused';this.notify();}}
   resume(){if(this.state==='paused'){this.state='reading';if(this.audio)void this.audio.play().catch(()=>this.playbackError?.('Dê play novamente para permitir a narração neste navegador.'));else if(this.utterances.length){speechSynthesis.resume();this.armWatchdog(this.token);}this.notify();}}
   setPlaybackRate(value:number){const rate=Math.min(2,Math.max(.6,value));if(this.audio)this.audio.playbackRate=rate;for(const utterance of this.utterances)utterance.rate=rate;}
-  private clearAudio(){this.audioMarks=[];if(this.audio){this.audio.onended=null;this.audio.onerror=null;this.audio.ontimeupdate=null;this.audio.onplay=null;this.audio.pause();this.audio.removeAttribute('src');this.audio.load();this.audio=undefined;}if(this.audioURL){URL.revokeObjectURL(this.audioURL);this.audioURL='';}}
+  private clearAudio(){this.preparedVideo=undefined;this.audioMarks=[];if(this.audio){this.audio.onended=null;this.audio.onerror=null;this.audio.ontimeupdate=null;this.audio.onplay=null;this.audio.pause();this.audio.removeAttribute('src');this.audio.load();this.audio=undefined;}if(this.audioURL){URL.revokeObjectURL(this.audioURL);this.audioURL='';}}
+  cachedVideoAudio(items:ReadingItem[]):VideoVoiceAudio|undefined {
+    const saved=this.preparedVideo;
+    if(saved?.key!==JSON.stringify(buildVideoNarrationPlan(items,'pt-BR')))return;
+    return {...saved.value,marks:saved.value.marks.map(mark=>({...mark}))};
+  }
+  async renderVideoAudio(items:ReadingItem[],signal:AbortSignal):Promise<VideoVoiceAudio> {
+    signal.throwIfAborted();
+    const chunks=buildVideoNarrationPlan(items,'pt-BR');
+    const abort=()=>this.stop();signal.addEventListener('abort',abort,{once:true});
+    this.preparing=true;this.status='Gerando a faixa de áudio em PT-BR…';this.notify();
+    try {
+      const result=await this.synthesize(chunks);signal.throwIfAborted();
+      if(!result.audio||!result.duration||!result.marks)throw new Error('A voz local não gerou a faixa de áudio.');
+      return {blob:new Blob([result.audio],{type:'audio/wav'}),duration:result.duration,marks:result.marks};
+    }finally{signal.removeEventListener('abort',abort);this.preparing=false;this.notify();}
+  }
   private armWatchdog(token:number){clearTimeout(this.watchdog);this.watchdog=setTimeout(()=>{if(token===this.token&&this.state==='reading'){const failure=this.onFailure;this.stop();failure?.('A voz não respondeu. Tente outra voz local.');}},120000);}
   private onFailure?:(error:string)=>void;
   private playbackError?:(error:string)=>void;
@@ -112,7 +131,9 @@ export class LocalNarrator {
       this.status='Preparando a narração contínua…';this.notify();
       void this.synthesize(chunks).then(result=>{
         if(token!==this.token)return;if(!result.audio){finish('A voz local não gerou o áudio. Tente novamente.');return;}
-        this.audioURL=URL.createObjectURL(new Blob([result.audio],{type:'audio/wav'}));const audio=new Audio(this.audioURL);this.audio=audio;this.seconds=result.duration||0;this.audioMarks=result.marks||[];
+        const blob=new Blob([result.audio],{type:'audio/wav'});
+        if(options.alignVideoCues&&this.language==='pt-BR')this.preparedVideo={key:JSON.stringify(chunks),value:{blob,duration:result.duration||0,marks:result.marks||[]}};
+        this.audioURL=URL.createObjectURL(blob);const audio=new Audio(this.audioURL);this.audio=audio;this.seconds=result.duration||0;this.audioMarks=result.marks||[];
         audio.playbackRate=Math.min(2,Math.max(.6,rate));audio.preservesPitch=true;
         const marks=this.audioMarks;let last='';const highlight=()=>{const mark=[...marks].reverse().find(m=>m.start<=audio.currentTime);if(mark&&mark.id!==last){last=mark.id;onItem(last);}};
         audio.ontimeupdate=highlight;audio.onplay=highlight;audio.onended=()=>finish();audio.onerror=()=>finish('Não foi possível reproduzir a narração local.');

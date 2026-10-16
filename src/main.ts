@@ -14,6 +14,8 @@ import { createIcons, Play, Layers, Languages, ShieldCheck, HardDrive, Download,
 import type { Project, Segment, WorkerEvent, Assignment } from './types';
 import { createLearningArea } from './learning';
 import { LocalNarrator, VideoNarration } from './narration';
+import { createVideoExport } from './video-export-dialog';
+import { videoReadingItems } from './video-export';
 import { listProjects, saveProject, deleteProject, removeLocalData, setLocalAccount } from './storage';
 import { activeSegment, formatClock, exportSubtitles, parseSubtitles, validateProject } from './subtitles.mjs';
 
@@ -49,6 +51,7 @@ let pendingOrganization: Assignment | undefined;
 let localEpoch = 0;
 let access: ReturnType<typeof createAccess>;
 let backups: ReturnType<typeof createBackupArea>;
+let videoExport: ReturnType<typeof createVideoExport>;
 const narrator = new LocalNarrator();
 
 $('#app').innerHTML = `
@@ -69,7 +72,7 @@ $('#app').innerHTML = `
     <div class="sidebar-bottom">
       <div class="local-card"><span class="local-icon">${icon('hard-drive')}</span><strong>Seu dispositivo. Seu conteúdo.</strong><p>Os vídeos ficam com você.<br>Tradução local ou de texto online.</p><span class="local-indicator"><span></span> Processamento local</span></div>
       <button class="install-button" id="install">${icon('monitor-smartphone')}<span>Instalar aplicativo</span>${icon('arrow-up-right')}</button>
-      <div class="sidebar-footer">Feito para compreender, sem barreiras.<span>v0.8.7 · PWA</span></div>
+      <div class="sidebar-footer">Feito para compreender, sem barreiras.<span>v0.9.0 · PWA</span></div>
     </div>
   </aside>
   <div class="app-content">
@@ -89,6 +92,7 @@ $('#app').innerHTML = `
             <div class="player-info"><div><strong id="file-title">Seu próximo treinamento</strong><span id="file-detail">Adicione um vídeo para começar</span></div><span class="language-route">EN ${icon('arrow-up-right')} PT-BR</span></div>
             <div class="player-toolbar"><label class="checkbox-label"><input type="checkbox" id="remember" /><span>Guardar vídeo neste dispositivo</span><button class="icon-button" data-action="storage-help" aria-label="Como funciona o armazenamento local">${icon('circle-help')}</button></label><label class="caption-select">${icon('captions')}<select id="caption-language" aria-label="Idioma das legendas"><option value="translated">Português</option><option value="original">Original</option><option value="both">Os dois idiomas</option><option value="off">Sem legenda</option></select></label></div>
             <div class="narration-panel material-playback"><h3>Narração</h3><div class="narration-toggles"><label><input type="checkbox" id="video-narration" />${icon('volume-2')}<span id="video-narration-label">Narrar em PT-BR</span></label><label><input type="checkbox" id="mute-original" />Silenciar áudio original</label></div><div class="voice-controls"><label>Voz local<select data-voice-select aria-label="Voz local do vídeo"></select></label><span class="voice-note">Fala contínua, sem esperar entre trechos. Para mudar o ritmo, use a velocidade do player; a legenda acompanha a voz.</span></div><p id="narration-status" aria-live="polite">Narração contínua em PT-BR. Prepare as vozes antes do primeiro uso; o vídeo segue sem pausas automáticas.</p></div>
+            <div class="video-download-bar"><button type="button" class="button secondary" id="download-video" disabled>${icon('download')}Baixar vídeo</button></div>
             <section class="material-tools process-area" id="video-tools" aria-label="Transcrição e tradução do vídeo">
               <div class="tools-heading"><h3 id="process-title">Transcrição e tradução</h3><span id="video-text-state" class="tools-status">Sem transcrição</span></div>
               <div class="source-settings tools-fields"><label>Idioma original<select id="video-source-language">${LANGUAGES.map(([code, label]) => `<option value="${code}">${label}</option>`).join('')}</select></label><label id="transcription-quality-field">Precisão da transcrição<select id="transcription-quality" aria-describedby="transcription-quality-help"><option value="small">Alto padrão — Whisper Small.en</option><option value="base" selected>Médio — Whisper Base.en</option></select></label></div>
@@ -127,13 +131,13 @@ $('#app').innerHTML = `
 `;
 icons();
 initAppearance();
-const online = createOnlineAssistant({ toast, dialog, isBusy: () => processing || Boolean(learning?.busy) || Boolean(backups?.busy) || !access?.granted });
+const online = createOnlineAssistant({ toast, dialog, isBusy: () => Boolean(videoExport?.busy) || processing || Boolean(learning?.busy) || Boolean(backups?.busy) || !access?.granted });
 const videoNarration = new VideoNarration($<HTMLVideoElement>('#video'), narrator, () => project?.segments ?? [], message => {
   $('#narration-status').textContent = message;
   $<HTMLInputElement>('#video-narration').checked = videoNarration.enabled;
 }, $<HTMLInputElement>('#mute-original'), () => ({sourceLanguage:project?.sourceLanguage,englishTerms:project?.pronunciationTerms}),()=>{syncNarrationCaptions();updateActiveSegment();});
 learning = createLearningArea({
-  toast, icons, dialog, changeView, narrator, online, currentView: () => currentView, accountEpoch: () => localEpoch, isBusy: () => processing || online.busy || Boolean(backups?.busy) || !access?.granted,
+  toast, icons, dialog, changeView, narrator, online, currentView: () => currentView, accountEpoch: () => localEpoch, isBusy: () => Boolean(videoExport?.busy) || processing || online.busy || Boolean(backups?.busy) || !access?.granted,
   stopMedia: () => { videoNarration.disable(); $<HTMLVideoElement>('#video').pause(); },
   openVideo: openProject, refreshVideos: refreshLibrary, currentVideo: () => project,
   addVideo: value => { pendingOrganization = value; attachToProject = false; $<HTMLInputElement>('#video-input').click(); },
@@ -144,6 +148,7 @@ learning = createLearningArea({
 access = createAccess({
   toast,
   lock: async () => {
+    videoExport?.cancel();
     localEpoch++; online.reset(); narrator.englishTerms=''; narrator.language='pt-BR'; $('#dialog-content').innerHTML = ''; cancelProcessing(true); narrator.stop(); videoNarration.disable(); $<HTMLVideoElement>('#video').pause();
     await learning.flush(); await learning.reset();
     clearVideo(); project = undefined; currentFile = undefined; projects = []; active = -1;
@@ -160,9 +165,11 @@ access = createAccess({
   },
 });
 const admin = createAdmin({ access, toast, dialog });
-backups = createBackupArea({ isBusy: () => processing || learning.busy || online.busy, allowed: () => access.granted, account: () => access.profile?.id, toast,
+backups = createBackupArea({ isBusy: () => Boolean(videoExport?.busy) || processing || learning.busy || online.busy, allowed: () => access.granted, account: () => access.profile?.id, toast,
   flush: () => learning.flush(), refresh: async () => { await refreshLibrary(); await learning.refresh(); },
 });
+videoExport=createVideoExport({project:()=>project,file:()=>currentFile||project?.video,cached:value=>narrator.cachedVideoAudio(videoReadingItems(value)),stop:()=>{videoNarration.disable();narrator.dispose();$<HTMLVideoElement>('#video').pause();},allowed:()=>access.granted,epoch:()=>localEpoch,isBusy:()=>processing||learning.busy||online.busy||backups.busy,onBusy:updateProjectUI,dialog,toast,locate:()=>{attachToProject=true;$<HTMLInputElement>('#video-input').click();}});
+$('#download-video').addEventListener('click',()=>videoExport.open());
 $('#signout').addEventListener('click', () => void access.signout());
 $('#video').addEventListener('play', () => { if (!access.granted) $<HTMLVideoElement>('#video').pause(); });
 document.addEventListener('access-changed', () => { $('#admin-nav').hidden = access.profile?.role !== 'master'; });
@@ -276,6 +283,7 @@ function updateProjectUI() {
   $<HTMLButtonElement>('#process').disabled = processing || !project || (!currentFile && !project.segments.length);
   $('#process').innerHTML = `${icon('languages')}${project?.segments.length ? 'Traduzir transcrição em PT-BR' : 'Transcrever e traduzir'}`;
   $<HTMLButtonElement>('#export').disabled = !project?.segments.length;
+  $<HTMLButtonElement>('#download-video').disabled = !project?.segments.length || processing || Boolean(videoExport?.busy);
   $<HTMLInputElement>('#search').disabled = !project?.segments.length;
   updateVideoActions();
   $('#progress-area').hidden = !processing;
@@ -367,7 +375,7 @@ function cancelProcessing(silent = false) {
 
 async function chooseVideo(file: File) {
   const epoch = localEpoch;
-  if (processing || learning.busy || online.busy || backups.busy) { toast('Cancele o processamento atual antes de trocar de vídeo.'); return; }
+  if (videoExport.busy || processing || learning.busy || online.busy || backups.busy) { toast('Cancele o processamento atual antes de trocar de vídeo.'); return; }
   if (file.size > 500 * 1024 * 1024) { toast('Escolha um vídeo de até 500 MB.'); return; }
   if (!file.type.startsWith('video/') && !/\.(mp4|mov|webm|mkv)$/i.test(file.name)) { toast('Escolha um arquivo de vídeo MP4, WebM, MOV ou MKV.'); return; }
   if (attachToProject && project && ((project.filename && file.name !== project.filename) || (project.size && file.size !== project.size))) {
@@ -426,7 +434,7 @@ async function chooseVideo(file: File) {
 }
 
 function startProcessing(transcribeOnly = false, retranscribe = false) {
-  if (learning.busy || online.busy) { toast('Conclua ou cancele o processamento atual primeiro.'); return; }
+  if (videoExport.busy || learning.busy || online.busy) { toast('Conclua ou cancele o processamento atual primeiro.'); return; }
   if (processing || !project || (!currentFile && !project.segments.length)) return;
   if(retranscribe&&!currentFile){toast('Selecione o vídeo original para refazer a transcrição.');return;}
   if (!window.Worker || !window.WebAssembly) { toast('Este navegador não suporta o processamento local. Use uma versão atual do Chrome, Edge, Firefox ou Safari.'); return; }
@@ -472,7 +480,7 @@ function startProcessing(transcribeOnly = false, retranscribe = false) {
 }
 
 async function openProject(id: string) {
-  if (processing || learning.busy || online.busy || backups.busy) { toast('Cancele o processamento antes de abrir outro projeto.'); return; }
+  if (videoExport.busy || processing || learning.busy || online.busy || backups.busy) { toast('Cancele o processamento antes de abrir outro projeto.'); return; }
   const selected = projects.find(p => p.id === id);
   if (!selected) return;
   project = selected;
@@ -496,13 +504,14 @@ function download(text: string, extension: string, type: string) {
 }
 
 function exportDialog() {
-  if (!project?.segments.length) return;
-  dialog(`<div class="dialog-symbol">${icon('download')}</div><h2>Leve as palavras com você.</h2><p>Arquivos exportados não incluem o vídeo. Guarde-os em um local adequado para conteúdo interno.</p><label class="field-label">Idioma<select id="export-language"><option value="translated">Português</option><option value="original">Original</option></select></label><div class="export-options"><button class="button secondary" data-format="srt">${icon('captions')}Legenda SRT</button><button class="button secondary" data-format="vtt">${icon('captions')}Legenda VTT</button><button class="button secondary" data-format="txt">${icon('file-text')}Texto completo</button><button class="button secondary" data-format="json">${icon('layers')}Projeto (ambos os idiomas)</button></div><p class="dialog-note">O projeto JSON preserva os tempos e textos para importar depois. O vídeo deve ser guardado separadamente.</p>`);
+  if (!project?.segments.length || videoExport.busy) return;
+  dialog(`<div class="dialog-symbol">${icon('download')}</div><h2>Leve a tradução com você.</h2><p>Baixe o vídeo traduzido ou exporte os textos separadamente.</p><button class="button primary" id="export-video-choice">${icon('file-video')}Baixar vídeo traduzido</button><label class="field-label">Idioma<select id="export-language"><option value="translated">Português</option><option value="original">Original</option></select></label><div class="export-options"><button class="button secondary" data-format="srt">${icon('captions')}Legenda SRT</button><button class="button secondary" data-format="vtt">${icon('captions')}Legenda VTT</button><button class="button secondary" data-format="txt">${icon('file-text')}Texto completo</button><button class="button secondary" data-format="json">${icon('layers')}Projeto (ambos os idiomas)</button></div><p class="dialog-note">O projeto JSON preserva os tempos e textos para importar depois. O vídeo deve ser guardado separadamente.</p>`);
+  $('#export-video-choice').addEventListener('click',()=>videoExport.open());
 }
 
 function editSegment(index: number) {
   const segment = project?.segments[index];
-  if (!segment || processing) return;
+  if (!segment || processing || videoExport.busy) return;
   dialog(`<h2>Revise este trecho</h2><p>Ajuste termos do treinamento e a tradução para PT-BR.</p><form id="edit-form"><div class="time-fields"><label class="field-label">Início (segundos)<input type="number" step="0.01" min="0" id="edit-start" value="${segment.start}" required /></label><label class="field-label">Fim (segundos)<input type="number" step="0.01" min="0" id="edit-end" value="${segment.end}" required /></label></div><label class="field-label">Texto original<textarea id="edit-original" rows="3" required>${escape(segment.original)}</textarea></label><label class="field-label">Tradução em português<textarea id="edit-translated" rows="3">${escape(segment.translated)}</textarea></label><p id="edit-error" class="field-error" role="alert"></p><button class="button primary" type="submit">${icon('check')}Salvar alterações</button></form>`);
   $('#edit-form').addEventListener('submit', async () => {
     const start = Number($<HTMLInputElement>('#edit-start').value);
@@ -596,7 +605,7 @@ $('#transcribe-only').addEventListener('click',()=>{
   dialog(`<h2>Refazer a transcrição?</h2><p>O áudio será reconhecido novamente com o modelo escolhido. A transcrição e as traduções atuais serão substituídas quando o novo texto estiver pronto.</p><button class="button primary" id="confirm-retranscription">Refazer transcrição</button>`);
   $('#confirm-retranscription').addEventListener('click',()=>{$<HTMLDialogElement>('#dialog').close();startProcessing(true,true);});
 });
-$('#video-source-language').addEventListener('change', async () => { if (!project || processing || online.busy || learning.busy) return; project.sourceLanguage = $<HTMLSelectElement>('#video-source-language').value; await persist(); updateProjectUI(); });
+$('#video-source-language').addEventListener('change', async () => { if (!project || videoExport.busy || processing || online.busy || learning.busy) return; project.sourceLanguage = $<HTMLSelectElement>('#video-source-language').value; await persist(); updateProjectUI(); });
 const videoTexts = () => project?.segments.map((s, i) => ({ id: String(i), original: s.original })) ?? [];
 $('#online-video').addEventListener('click', () => { const target = project; if (!target) return; online.translate(videoTexts(), async values => { videoNarration.disable(); narrator.stop(); for (const value of values) target.segments[Number(value.id)].translated = value.translated; await saveProject(target); await refreshLibrary(); if (project?.id === target.id) { updateProjectUI(); renderTranscript(); updateCaptions(); } await learning.refresh(); if (currentView === 'workspace' && project?.id === target.id) await learning.showVideoResult(target.id); }); });
 $('#analyze-video').addEventListener('click', () => { const target = project; if (!target) return; online.analyze(videoTexts(), async value => { target.analysis = value; await saveProject(target); if (project?.id === target.id) updateProjectUI(); await refreshLibrary(); }); });
@@ -690,7 +699,7 @@ $<HTMLInputElement>('#project-input').addEventListener('change', async event => 
 });
 
 $('#clear-data').addEventListener('click', () => {
-  if (processing || learning.busy || online.busy || backups.busy) { toast('Cancele o processamento antes de apagar os dados.'); return; }
+  if (videoExport.busy || processing || learning.busy || online.busy || backups.busy) { toast('Cancele o processamento antes de apagar os dados.'); return; }
   dialog(`<h2>Apagar os dados locais?</h2><p>Isso remove os projetos, vídeos guardados e páginas PDF desta conta neste navegador, além do cache compartilhado dos modelos de IA. Bibliotecas de outras contas e a cópia anterior ao login são preservadas. O aplicativo continua instalado. Você precisará baixar os modelos novamente.</p><p>Exporte seus projetos antes. Esta ação não pode ser desfeita.</p><button class="button danger" id="confirm-clear">${icon('trash-2')}Apagar dados locais</button>`);
   $('#confirm-clear').addEventListener('click', async () => {
     try {
@@ -725,7 +734,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 }
 window.addEventListener('offline', () => toast('Você está offline. Vídeos locais continuam disponíveis; a IA precisa dos modelos completos em cache.'));
 window.addEventListener('beforeunload', event => {
-  if (processing || learning.busy || online.busy || backups.busy) { event.preventDefault(); }
+  if (videoExport.busy || processing || learning.busy || online.busy || backups.busy) { event.preventDefault(); }
 });
 updateProjectUI();
 void access.init();

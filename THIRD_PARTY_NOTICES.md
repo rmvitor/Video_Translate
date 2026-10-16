@@ -13,6 +13,7 @@ O build distribui bibliotecas e runtimes instalados pelo npm. Preserve as licen�
 | fflate | 0.8.3 | MIT · https://github.com/101arrowz/fflate |
 | Lucide | 0.468.0 | ISC · https://github.com/lucide-icons/lucide |
 | PDF.js / pdfjs-dist | 5.4.624 | Apache-2.0 · https://github.com/mozilla/pdf.js |
+| Liberation Sans Regular (legenda fixa, distribuída com PDF.js) | conforme pdfjs-dist | SIL Open Font License 1.1 · licença em `runtime/pdf/standard_fonts/LICENSE_LIBERATION` |
 | @diffusionstudio/piper-wasm | 1.0.0 | Wrapper declarado MIT; fontes/build: https://github.com/diffusion-studio/piper-wasm/tree/69522c832bd52d7c16389e9a8aee568065027689 |
 | Piper phonemizer | conforme runtime acima | MIT · https://github.com/rhasspy/piper-phonemize |
 | eSpeak NG incorporado no phonemizer WASM | conforme runtime acima | GPL-3.0-or-later · fontes: https://github.com/rhasspy/espeak-ng e https://github.com/wide-video/piper-phonemize |
